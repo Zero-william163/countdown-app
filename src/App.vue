@@ -8,7 +8,8 @@ import { PermissionChecker, UpdatePlugin, AlarmPlugin, FloatingWindowPlugin } fr
 
 const STORAGE_KEY = 'countdown_settings';
 const FIRST_LAUNCH_KEY = 'has_seen_permission_guide';
-const appVersion = ref('3.9.7');
+const DOWNLOADED_VERSION_KEY = 'downloaded_version'; // 已下载版本号
+const appVersion = ref('0.0.0'); // 初始值，启动后从原生动态获取
 
 // 状态
 const targetName = ref('');
@@ -31,6 +32,7 @@ const hasOverlayPermission = ref(false); // 悬浮窗权限
 const hasAutoStartPermission = ref(false); // 自启动权限
 const isFloatingWindowShown = ref(false); // 悬浮窗是否正在显示
 const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
+const isCheckingUpdate = ref(false); // 是否正在检查更新
 
 const countdown = ref({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 const totalRemaining = ref('');
@@ -355,27 +357,44 @@ function getBeijingTimeFallback(): Date {
 async function updateCountdown() {
   if (!isAlarmSet.value || !targetDate.value) return;
 
-  const now = await getBeijingTime();
+  try {
+    const now = await getBeijingTime();
+    console.log('[Countdown] 当前时间:', now);
+    console.log('[Countdown] 目标日期:', targetDate.value);
 
-  const [month, day, year] = targetDate.value.split('/').map(Number);
-  const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const dateParts = targetDate.value.split(/[-/]/).map(Number);
+    console.log('[Countdown] 日期部分:', dateParts);
 
-  const diff = target.getTime() - now.getTime();
+    if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+      console.error('[Countdown] 日期格式错误:', targetDate.value);
+      return;
+    }
 
-  if (diff <= 0) {
-    countdown.value = { days: 0, hours: 0, minutes: 0, seconds: 0 };
-    totalRemaining.value = '0 天 0 小时 0 分钟';
-    return;
+    const [year, month, day] = dateParts;
+    const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    console.log('[Countdown] 目标时间:', target);
+
+    const diff = target.getTime() - now.getTime();
+    console.log('[Countdown] 时间差:', diff);
+
+    if (diff <= 0) {
+      countdown.value = { days: 0, hours: 0, minutes: 0, seconds: 0 };
+      totalRemaining.value = '0 天 0 小时 0 分钟';
+      return;
+    }
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const remaining = diff % (1000 * 60 * 60 * 24);
+    const hrs = Math.floor(remaining / (1000 * 60 * 60));
+    const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    const secs = Math.floor((remaining % (1000 * 60)) / 1000);
+
+    console.log('[Countdown] 计算结果:', { days, hrs, mins, secs });
+    countdown.value = { days, hours: hrs, minutes: mins, seconds: secs };
+    totalRemaining.value = `${days} 天 ${hrs} 小时 ${mins} 分钟`;
+  } catch (e) {
+    console.error('[Countdown] 计算失败:', e);
   }
-
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const remaining = diff % (1000 * 60 * 60 * 24);
-  const hrs = Math.floor(remaining / (1000 * 60 * 60));
-  const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-  const secs = Math.floor((remaining % (1000 * 60)) / 1000);
-
-  countdown.value = { days, hours: hrs, minutes: mins, seconds: secs };
-  totalRemaining.value = `${days} 天 ${hrs} 小时 ${mins} 分钟`;
 }
 
 // 调度每日闹钟 - 使用原生 AlarmManager 确保声音和震动
@@ -384,7 +403,8 @@ async function scheduleDailyNotifications() {
     const [hours, minutes] = reminderTime.value.split(':').map(Number);
 
     const now = await getBeijingTime();
-    const [month, day, year] = targetDate.value.split('/').map(Number);
+    const dateParts = targetDate.value.split(/[-/]/).map(Number);
+  const [year, month, day] = dateParts;
     const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
     const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
     const totalDays = Math.ceil((target.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
@@ -425,7 +445,8 @@ async function scheduleLocalNotificationsFallback() {
   const [hours, minutes] = reminderTime.value.split(':').map(Number);
 
   const now = await getBeijingTime();
-  const [month, day, year] = targetDate.value.split('/').map(Number);
+  const dateParts = targetDate.value.split(/[-/]/).map(Number);
+  const [year, month, day] = dateParts;
   const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
   const totalDays = Math.ceil((target.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
@@ -633,10 +654,58 @@ async function checkForUpdate(manualUrl?: string) {
   latestVersion.value = foundVersion;
   latestApkUrl.value = foundApkUrl;
 
+  isCheckingUpdate.value = false;
+
+  console.log('[Update] 检查完成: 发现版本=' + foundVersion + ', 当前版本=' + appVersion.value);
+  console.log('[Update] 版本比较结果: compareVersions(' + foundVersion + ', ' + appVersion.value + ') = ' + compareVersions(foundVersion, appVersion.value));
+
   if (foundVersion && compareVersions(foundVersion, appVersion.value)) {
-    showUpdateNotice.value = true;
+    // 检查是否已经下载过该版本（避免重复下载）
+    const downloadedVersion = localStorage.getItem(DOWNLOADED_VERSION_KEY);
+    if (downloadedVersion === foundVersion) {
+      // 已下载但未安装，提示用户安装而不是重新下载
+      console.log('[Update] 新版本已下载，等待安装:', foundVersion);
+      showUpdateNotice.value = false; // 不显示顶部更新提示条
+      // 显示安装提示对话框
+      updateStatus.value = `新版本 v${foundVersion} 已下载完成，请点击安装`;
+      showUpdateDialog.value = true;
+      isUpdating.value = false;
+    } else {
+      showUpdateNotice.value = true;
+      console.log('[Update] 显示更新提示');
+    }
   } else {
     showUpdateNotice.value = false;
+    console.log('[Update] 已是最新版本，不显示更新提示');
+  }
+}
+
+// 手动检查更新（设置中调用）
+async function manualCheckUpdate() {
+  if (isCheckingUpdate.value) return;
+  
+  isCheckingUpdate.value = true;
+  updateStatus.value = '正在检查更新...';
+  showUpdateDialog.value = true;
+  
+  try {
+    await checkForUpdate();
+    
+    if (latestVersion.value && compareVersions(latestVersion.value, appVersion.value)) {
+      updateStatus.value = `发现新版本 v${latestVersion.value}，点击确定开始下载`;
+      isUpdating.value = false;
+    } else {
+      updateStatus.value = '已是最新版本';
+      isUpdating.value = false;
+      setTimeout(() => {
+        showUpdateDialog.value = false;
+      }, 2000);
+    }
+  } catch (e) {
+    updateStatus.value = '检查更新失败，请稍后重试';
+    isUpdating.value = false;
+    isCheckingUpdate.value = false;
+    console.error('[Update] 手动检查更新失败:', e);
   }
 }
 
@@ -683,12 +752,24 @@ async function updateApp() {
 
 // 开始下载APK
 async function startDownload() {
+  isUpdating.value = true;
   updateStatus.value = '正在下载新版本...';
   try {
     const result = await UpdatePlugin.downloadAndInstall({ url: latestApkUrl.value });
     if (result.success) {
       updateStatus.value = '下载已开始，请查看通知栏进度。下载完成后将自动弹出安装界面。';
-      // 修复问题5：移除setTimeout强制关闭，改为用户手动关闭或应用返回前台时自动关闭
+      // 记录已下载的版本号，避免下次启动重复下载
+      if (latestVersion.value) {
+        localStorage.setItem(DOWNLOADED_VERSION_KEY, latestVersion.value);
+        console.log('[Update] 已记录下载版本号:', latestVersion.value);
+      }
+      // 隐藏顶部更新提示条
+      showUpdateNotice.value = false;
+      // 10秒后自动关闭对话框
+      setTimeout(() => {
+        showUpdateDialog.value = false;
+        isUpdating.value = false;
+      }, 10000);
     }
   } catch (e) {
     const errMsg = (e as Error).message || '';
@@ -724,6 +805,23 @@ onMounted(async () => {
     await AlarmPlugin.stopAlarm();
   } catch (e) {
     // 忽略错误，可能没有闹钟在响
+  }
+
+  // 0.1 从原生获取当前应用版本号（避免硬编码）
+  try {
+    const versionResult = await UpdatePlugin.getAppVersion();
+    if (versionResult.success && versionResult.version) {
+      appVersion.value = versionResult.version;
+      console.log('[Update] 从原生获取版本号:', appVersion.value);
+      // 如果当前安装版本与已下载版本不同，清除下载标记（说明已安装新版本）
+      const downloadedVersion = localStorage.getItem(DOWNLOADED_VERSION_KEY);
+      if (downloadedVersion && downloadedVersion !== appVersion.value) {
+        console.log('[Update] 检测到已安装新版本，清除下载标记');
+        localStorage.removeItem(DOWNLOADED_VERSION_KEY);
+      }
+    }
+  } catch (e) {
+    console.error('[Update] 获取版本号失败:', e);
   }
 
   // 1. 首次启动检查 - 始终显示权限引导
@@ -971,6 +1069,23 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
+            <label>当前版本</label>
+            <div class="version-info">
+              <span class="version-current">v{{ appVersion }}</span>
+              <button 
+                class="btn-check-update" 
+                @click="manualCheckUpdate"
+                :disabled="isCheckingUpdate"
+              >
+                <svg v-if="!isCheckingUpdate" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C9.79 4 7.8 4.9 6.35 6.35C4.9 7.8 4 9.79 4 12C4 14.21 4.9 16.2 6.35 17.65C7.8 19.1 9.79 20 12 20C14.21 20 16.2 19.1 17.65 17.65C19.1 16.2 20 14.21 20 12C20 9.79 19.1 7.8 17.65 6.35ZM12 18C9.79 18 8 16.21 8 14C8 11.79 9.79 10 12 10C14.21 10 16 11.79 16 14C16 16.21 14.21 18 12 18ZM13 7H11V13L16.25 16.15L17 14.92L13 12.25V7Z" fill="#2B7FFF"/>
+                </svg>
+                <span>{{ isCheckingUpdate ? '检查中...' : '检查更新' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 4H18V2H16V4H8V2H6V4H5C3.89 4 3.01 4.9 3.01 6L3 20C3 21.1 3.89 22 5 22H19C20.1 22 21 21.1 21 20V6C21 4.9 20.1 4 19 4ZM19 20H5V10H19V20ZM19 8H5V6H19V8ZM12 13H17V18H12V13Z" fill="#2B7FFF"/>
@@ -1135,7 +1250,11 @@ onUnmounted(() => {
         <div v-if="isUpdating" style="display: flex; justify-content: center; margin: 16px 0;">
           <div style="width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top: 3px solid #2B7FFF; border-radius: 50%; animation: spin 1s linear infinite;"></div>
         </div>
-        <div class="confirm-actions">
+        <div class="confirm-actions" v-if="!isUpdating">
+          <button class="btn-text" @click="closeUpdateDialog">{{ latestVersion && compareVersions(latestVersion, appVersion) ? '稍后' : '关闭' }}</button>
+          <button v-if="latestVersion && compareVersions(latestVersion, appVersion)" class="btn-text btn-primary-text" @click="startDownload">立即更新</button>
+        </div>
+        <div class="confirm-actions" v-else>
           <button class="btn-text" @click="closeUpdateDialog">关闭</button>
         </div>
       </div>
@@ -1599,6 +1718,51 @@ body {
   outline: none;
   border-color: #2B7FFF;
   background: white;
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #FAFBFC;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+}
+
+.version-current {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1A1A2E;
+}
+
+.btn-check-update {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #2B7FFF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-check-update:hover {
+  background: #1E6FE8;
+}
+
+.btn-check-update:disabled {
+  background: #9CA3AF;
+  cursor: not-allowed;
+}
+
+.btn-check-update svg {
+  width: 16px;
+  height: 16px;
 }
 
 .modal-footer {

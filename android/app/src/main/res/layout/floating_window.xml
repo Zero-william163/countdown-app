@@ -5,115 +5,134 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/floating_bg"
-    android:padding="12dp"
+    android:padding="8dp"
     android:elevation="6dp">
 
-    <!-- 顶部：目标名称 + 关闭按钮 -->
+    <!-- 折叠状态：仅显示一个小图标 -->
+    <ImageView
+        android:id="@+id/floating_icon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@android:drawable/ic_lock_idle_alarm"
+        android:scaleType="centerInside"
+        android:contentDescription="时钟"
+        android:visibility="visible" />
+
+    <!-- 展开状态：完整的倒计时卡片 -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="8dp">
-
-        <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@android:drawable/ic_lock_idle_alarm"
-            android:contentDescription="闹钟" />
-
-        <TextView
-            android:id="@+id/floating_target_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="6dp"
-            android:text="倒计时"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:singleLine="true"
-            android:ellipsize="end"
-            android:maxWidth="120dp" />
-
-        <ImageView
-            android:id="@+id/floating_close"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:contentDescription="关闭" />
-    </LinearLayout>
-
-    <!-- 倒计时主体：天数大字 + 时分秒 -->
-    <LinearLayout
+        android:id="@+id/floating_expanded"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:layout_gravity="center_horizontal">
+        android:orientation="vertical"
+        android:visibility="gone">
 
+        <!-- 顶部：目标名称 + 关闭按钮 -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginEnd="8dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@android:drawable/ic_lock_idle_alarm"
+                android:contentDescription="闹钟" />
 
             <TextView
-                android:id="@+id/floating_days"
-                android:layout_width="wrap_content"
+                android:id="@+id/floating_target_name"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="0"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="倒计时"
                 android:textColor="#FFFFFF"
-                android:textSize="28sp"
+                android:textSize="12sp"
                 android:textStyle="bold"
-                android:shadowColor="#33000000"
-                android:shadowDx="1"
-                android:shadowDy="1"
-                android:shadowRadius="2" />
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:maxWidth="100dp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="天"
-                android:textColor="#CCFFFFFF"
-                android:textSize="10sp" />
+            <ImageView
+                android:id="@+id/floating_close"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:contentDescription="关闭" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=":"
-            android:textColor="#CCFFFFFF"
-            android:textSize="22sp"
-            android:layout_marginEnd="8dp"
-            android:layout_marginBottom="10dp" />
-
+        <!-- 倒计时主体：天数大字 + 时分秒 -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center">
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_gravity="center_horizontal">
 
-            <TextView
-                android:id="@+id/floating_time"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="00:00:00"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:shadowColor="#33000000"
-                android:shadowDx="1"
-                android:shadowDy="1"
-                android:shadowRadius="2" />
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginEnd="6dp">
+
+                <TextView
+                    android:id="@+id/floating_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#33000000"
+                    android:shadowDx="1"
+                    android:shadowDy="1"
+                    android:shadowRadius="2" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="天"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="10sp" />
+            </LinearLayout>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="时:分:秒"
+                android:text=":"
                 android:textColor="#CCFFFFFF"
-                android:textSize="9sp" />
+                android:textSize="18sp"
+                android:layout_marginEnd="6dp"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <TextView
+                    android:id="@+id/floating_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00:00"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#33000000"
+                    android:shadowDx="1"
+                    android:shadowDy="1"
+                    android:shadowRadius="2" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="时:分:秒"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="8sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

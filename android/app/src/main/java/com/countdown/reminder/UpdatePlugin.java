@@ -20,18 +20,40 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+@CapacitorPlugin(name = "UpdatePlugin")
 public class UpdatePlugin extends Plugin {
 
     private static final String TAG = "UpdatePlugin";
     private static final String APK_FILE_NAME = "countdown_update.apk";
     private long downloadId = -1;
     private BroadcastReceiver downloadReceiver;
+
+    /**
+     * 获取当前应用版本号（从 Android 原生读取，避免硬编码）
+     */
+    @PluginMethod
+    public void getAppVersion(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            PackageInfo info = getContext().getPackageManager()
+                .getPackageInfo(getContext().getPackageName(), 0);
+            ret.put("version", info.versionName);
+            ret.put("versionCode", info.versionCode);
+            ret.put("success", true);
+        } catch (Exception e) {
+            Log.e(TAG, "获取版本号失败", e);
+            ret.put("version", "");
+            ret.put("success", false);
+        }
+        call.resolve(ret);
+    }
 
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {

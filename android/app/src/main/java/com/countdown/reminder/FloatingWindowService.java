@@ -56,6 +56,11 @@ public class FloatingWindowService extends Service {
     private Timer updateTimer;
     private Handler mainHandler;
 
+    // 折叠/展开相关
+    private ImageView iconView;
+    private View expandedView;
+    private boolean isExpanded = false;
+
     private String targetName = "倒计时";
     private String targetDateStr = "";
     private String targetTimeStr = "00:00";
@@ -214,6 +219,16 @@ public class FloatingWindowService extends Service {
         // 加载悬浮窗布局
         floatingView = LayoutInflater.from(this).inflate(R.layout.floating_window, null);
 
+        // 获取视图引用
+        iconView = floatingView.findViewById(R.id.floating_icon);
+        expandedView = floatingView.findViewById(R.id.floating_expanded);
+
+        // 设置点击事件：点击图标切换展开/折叠
+        iconView.setOnClickListener(v -> toggleExpand());
+
+        // 设置点击事件：点击展开区域（除关闭按钮外）折叠回去
+        expandedView.setOnClickListener(v -> toggleExpand());
+
         // 设置 LayoutParams
         int layoutType;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -358,22 +373,45 @@ public class FloatingWindowService extends Service {
         }
     }
 
+    /**
+     * 切换折叠/展开状态
+     */
+    private void toggleExpand() {
+        if (iconView == null || expandedView == null) return;
+        
+        isExpanded = !isExpanded;
+        
+        if (isExpanded) {
+            // 展开：隐藏图标，显示完整卡片
+            iconView.setVisibility(View.GONE);
+            expandedView.setVisibility(View.VISIBLE);
+            Log.d(TAG, "悬浮窗展开");
+        } else {
+            // 折叠：显示图标，隐藏完整卡片
+            iconView.setVisibility(View.VISIBLE);
+            expandedView.setVisibility(View.GONE);
+            Log.d(TAG, "悬浮窗折叠");
+        }
+        
+        // 调整窗口大小以适应内容变化
+        if (windowManager != null && floatingView != null && layoutParams != null) {
+            windowManager.updateViewLayout(floatingView, layoutParams);
+        }
+    }
+
     private void setupTouchListener() {
         if (floatingView == null) return;
 
-        // 按文档建议：只更新 params.x/y + updateViewLayout，绝不 removeView
-        // 移除原"向下滑动关闭"逻辑（这是导致"一滑动就消失"的根因）
+        // 悬浮窗支持拖动，点击事件由 OnClickListener 处理
         floatingView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
             private boolean isDragging = false;
-            private static final int DRAG_THRESHOLD = 10;  // 点击与拖动的判定阈值
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        // 记录按下时的位置（用屏幕绝对坐标 rawX/rawY）
                         initialX = layoutParams.x;
                         initialY = layoutParams.y;
                         initialTouchX = event.getRawX();
@@ -385,13 +423,11 @@ public class FloatingWindowService extends Service {
                         float deltaX = event.getRawX() - initialTouchX;
                         float deltaY = event.getRawY() - initialTouchY;
 
-                        // 超过阈值才算拖动（避免点击误触发拖动）
-                        if (!isDragging && (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD)) {
+                        if (!isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
                             isDragging = true;
                         }
 
                         if (isDragging) {
-                            // 关键：只更新位置，绝不删除 View
                             layoutParams.x = initialX + (int) deltaX;
                             layoutParams.y = initialY + (int) deltaY;
                             windowManager.updateViewLayout(floatingView, layoutParams);
@@ -399,17 +435,10 @@ public class FloatingWindowService extends Service {
                         return true;
 
                     case MotionEvent.ACTION_UP:
-                        // 点击（未拖动）：打开应用
-                        if (!isDragging) {
-                            Intent openIntent = new Intent(FloatingWindowService.this, MainActivity.class);
-                            openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                            startActivity(openIntent);
-                        }
-                        isDragging = false;
-                        return true;
+                        // 如果是拖动，消费事件；如果是点击，不消费（让 OnClickListener 处理）
+                        return isDragging;
 
                     case MotionEvent.ACTION_CANCEL:
-                        isDragging = false;
                         return true;
 
                     default:

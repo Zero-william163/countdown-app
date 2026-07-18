@@ -32,6 +32,7 @@ export interface UpdatePluginInterface {
   downloadAndInstall(options: { url: string }): Promise<{ success: boolean; message: string }>;
   checkInstallPermission(): Promise<{ granted: boolean }>;
   requestInstallPermission(): Promise<void>;
+  getAppVersion(): Promise<{ version: string; versionCode: number; success: boolean }>;
 }
 
 export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin', {
@@ -39,6 +40,7 @@ export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin'
     downloadAndInstall: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve({ success: true, message: 'Web platform' }); },
     checkInstallPermission: () => Promise.resolve({ granted: true }),
     requestInstallPermission: () => Promise.resolve(),
+    getAppVersion: () => Promise.resolve({ version: '0.0.0', versionCode: 0, success: false }),
   },
 });
 
