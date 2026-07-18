@@ -1,0 +1,83 @@
+import { registerPlugin } from '@capacitor/core';
+
+export interface PermissionCheckerPlugin {
+  checkExactAlarmPermission(): Promise<{ granted: boolean }>;
+  checkBatteryOptimization(): Promise<{ granted: boolean }>;
+  checkNotificationPermission(): Promise<{ granted: boolean }>;
+  checkAutoStartPermission(): Promise<{ granted: boolean }>;
+  openAlarmSettings(): Promise<void>;
+  openBatterySettings(): Promise<void>;
+  openAutoStartSettings(): Promise<void>;
+  openAppSettings(): Promise<void>;
+  openUrl(options: { url: string }): Promise<void>;
+  requestNotificationPermission(): Promise<void>;
+}
+
+export const PermissionChecker = registerPlugin<PermissionCheckerPlugin>('PermissionChecker', {
+  web: {
+    checkExactAlarmPermission: () => Promise.resolve({ granted: true }),
+    checkBatteryOptimization: () => Promise.resolve({ granted: true }),
+    checkNotificationPermission: () => Promise.resolve({ granted: true }),
+    checkAutoStartPermission: () => Promise.resolve({ granted: true }),
+    openAlarmSettings: () => Promise.resolve(),
+    openBatterySettings: () => Promise.resolve(),
+    openAutoStartSettings: () => Promise.resolve(),
+    openAppSettings: () => Promise.resolve(),
+    openUrl: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve(); },
+    requestNotificationPermission: () => Promise.resolve(),
+  },
+});
+
+export interface UpdatePluginInterface {
+  downloadAndInstall(options: { url: string }): Promise<{ success: boolean; message: string }>;
+  checkInstallPermission(): Promise<{ granted: boolean }>;
+  requestInstallPermission(): Promise<void>;
+}
+
+export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin', {
+  web: {
+    downloadAndInstall: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve({ success: true, message: 'Web platform' }); },
+    checkInstallPermission: () => Promise.resolve({ granted: true }),
+    requestInstallPermission: () => Promise.resolve(),
+  },
+});
+
+export interface AlarmPluginInterface {
+  scheduleDailyAlarms(options: {
+    hour: number;
+    minute: number;
+    targetName: string;
+    daysRemaining: number;
+    targetDate: string;
+  }): Promise<{ success: boolean; count: number }>;
+  cancelAllAlarms(): Promise<{ success: boolean; count: number }>;
+  stopAlarm(): Promise<{ success: boolean }>;
+}
+
+export const AlarmPlugin = registerPlugin<AlarmPluginInterface>('AlarmPlugin', {
+  web: {
+    scheduleDailyAlarms: () => Promise.resolve({ success: true, count: 0 }),
+    cancelAllAlarms: () => Promise.resolve({ success: true, count: 0 }),
+    stopAlarm: () => Promise.resolve({ success: true }),
+  },
+});
+
+export interface FloatingWindowPluginInterface {
+  checkOverlayPermission(): Promise<{ granted: boolean }>;
+  openOverlaySettings(): Promise<void>;
+  showFloatingWindow(options: {
+    targetName: string;
+    targetDate: string;
+    targetTime: string;
+  }): Promise<{ success: boolean }>;
+  hideFloatingWindow(): Promise<{ success: boolean }>;
+}
+
+export const FloatingWindowPlugin = registerPlugin<FloatingWindowPluginInterface>('FloatingWindowPlugin', {
+  web: {
+    checkOverlayPermission: () => Promise.resolve({ granted: false }),
+    openOverlaySettings: () => Promise.resolve(),
+    showFloatingWindow: () => Promise.resolve({ success: false }),
+    hideFloatingWindow: () => Promise.resolve({ success: false }),
+  },
+});
