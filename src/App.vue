@@ -268,48 +268,6 @@ function closeSettings() {
   showSettings.value = false;
 }
 
-// 保存设置
-async function saveSettings() {
-  if (!targetName.value || !targetDate.value || !reminderTime.value) {
-    alert('请填写完整信息');
-    return;
-  }
-
-  try {
-    const permResult = await LocalNotifications.requestPermissions();
-    hasPermission.value = permResult.display === 'granted';
-  } catch (e) {
-    console.log('请求通知权限失败:', e);
-  }
-
-  const settings = {
-    targetName: targetName.value,
-    targetDate: targetDate.value,
-    reminderTime: reminderTime.value,
-    setAt: new Date().toISOString()
-  };
-  await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(settings) });
-
-  isAlarmSet.value = true;
-  showSettings.value = false;
-  updateCountdown();
-  await scheduleDailyNotifications();
-
-  try {
-    const overlayPerm = await FloatingWindowPlugin.checkOverlayPermission();
-    if (overlayPerm.granted) {
-      await FloatingWindowPlugin.showFloatingWindow({
-        targetName: targetName.value,
-        targetDate: targetDate.value,
-        targetTime: '00:00',
-      });
-      isFloatingWindowShown.value = true;
-    }
-  } catch (e) {
-    console.log('自动显示悬浮窗失败:', e);
-  }
-}
-
 // 加载设置
 async function loadSavedSettings() {
   try {
@@ -793,12 +751,6 @@ function closeUpdateDialog() {
   isUpdating.value = false;
 }
 
-// 最小日期
-const minDate = computed(() => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-});
-
 onMounted(async () => {
   // 0. 如果闹钟正在响铃，停止它（用户打开了应用）
   try {
@@ -1049,7 +1001,7 @@ onUnmounted(() => {
     <div v-if="showSettings" class="modal-overlay" @click.self="closeSettings">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>{{ isAlarmSet ? '修改设置' : '设置倒计时' }}</h3>
+          <h3>修改设置</h3>
           <button class="modal-close" @click="closeSettings">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill="#999"/>
@@ -1058,16 +1010,6 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-body">
-          <div class="form-group">
-            <label>目标名称</label>
-            <input
-              type="text"
-              v-model="targetName"
-              placeholder="例如：开学、生日、考试"
-              class="input-field"
-            />
-          </div>
-
           <div class="form-group">
             <label>当前版本</label>
             <div class="version-info">
@@ -1084,40 +1026,6 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
-
-          <div class="form-group">
-            <label>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M19 4H18V2H16V4H8V2H6V4H5C3.89 4 3.01 4.9 3.01 6L3 20C3 21.1 3.89 22 5 22H19C20.1 22 21 21.1 21 20V6C21 4.9 20.1 4 19 4ZM19 20H5V10H19V20ZM19 8H5V6H19V8ZM12 13H17V18H12V13Z" fill="#2B7FFF"/>
-              </svg>
-              目标日期
-            </label>
-            <input
-              type="date"
-              v-model="targetDate"
-              :min="minDate"
-              class="input-field"
-            />
-          </div>
-
-          <div class="form-group">
-            <label>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M11.99 2C6.47 2 2 6.48 2 12C2 17.52 6.47 22 11.99 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 11.99 2ZM12 20C7.58 20 4 16.42 4 12C4 7.58 7.58 4 12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20ZM12.5 7H11V13L16.25 16.15L17 14.92L12.5 12.25V7Z" fill="#2B7FFF"/>
-              </svg>
-              每日提醒时间
-            </label>
-            <input
-              type="time"
-              v-model="reminderTime"
-              class="input-field"
-            />
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-cancel" @click="closeSettings">取消</button>
-          <button class="btn btn-save" @click="saveSettings">保存</button>
         </div>
       </div>
     </div>
