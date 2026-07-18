@@ -309,6 +309,14 @@ async function saveSettings() {
   } catch (e) {
     console.log('自动显示悬浮窗失败:', e);
   }
+
+  // 更新桌面小组件
+  try {
+    await FloatingWindowPlugin.updateWidget();
+    console.log('[Widget] 小组件已更新');
+  } catch (e) {
+    console.log('[Widget] 更新小组件失败:', e);
+  }
 }
 
 // 加载设置

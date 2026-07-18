@@ -73,6 +73,7 @@ export interface FloatingWindowPluginInterface {
     targetTime: string;
   }): Promise<{ success: boolean }>;
   hideFloatingWindow(): Promise<{ success: boolean }>;
+  updateWidget(): Promise<{ success: boolean }>;
 }
 
 export const FloatingWindowPlugin = registerPlugin<FloatingWindowPluginInterface>('FloatingWindowPlugin', {
@@ -81,5 +82,6 @@ export const FloatingWindowPlugin = registerPlugin<FloatingWindowPluginInterface
     openOverlaySettings: () => Promise.resolve(),
     showFloatingWindow: () => Promise.resolve({ success: false }),
     hideFloatingWindow: () => Promise.resolve({ success: false }),
+    updateWidget: () => Promise.resolve({ success: false }),
   },
 });

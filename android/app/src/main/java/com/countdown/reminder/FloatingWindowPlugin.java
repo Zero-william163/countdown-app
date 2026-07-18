@@ -122,4 +122,24 @@ public class FloatingWindowPlugin extends Plugin {
             call.reject("隐藏悬浮窗失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 更新桌面小组件
+     * 小组件会从 SharedPreferences 读取最新的倒计时数据
+     */
+    @PluginMethod
+    public void updateWidget(PluginCall call) {
+        try {
+            Intent updateIntent = new Intent(getContext(), CountdownWidgetReceiver.class);
+            updateIntent.setAction("android.appwidget.action.APPWIDGET_UPDATE");
+            getContext().sendBroadcast(updateIntent);
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "更新小组件失败", e);
+            call.reject("更新小组件失败: " + e.getMessage());
+        }
+    }
 }
