@@ -8,12 +8,11 @@ import { PermissionChecker, UpdatePlugin, AlarmPlugin, FloatingWindowPlugin } fr
 
 const STORAGE_KEY = 'countdown_settings';
 const FIRST_LAUNCH_KEY = 'has_seen_permission_guide';
-const appVersion = ref('3.9.6');
+const appVersion = ref('3.9.7');
 
 // 状态
 const targetName = ref('');
 const targetDate = ref('');
-const targetTime = ref('12:00');
 const reminderTime = ref('09:00');
 const isAlarmSet = ref(false);
 const hasPermission = ref(false);
@@ -38,10 +37,9 @@ const totalRemaining = ref('');
 
 let timer: number | null = null;
 
-// 目标日期时间文本
+// 目标日期文本
 const targetDateTimeText = computed(() => {
-  if (!targetDate.value) return '';
-  return `${targetDate.value} ${targetTime.value || '00:00'}`;
+  return targetDate.value || '';
 });
 
 // 请求通知权限
@@ -222,7 +220,7 @@ async function showFloatingCountdown() {
     await FloatingWindowPlugin.showFloatingWindow({
       targetName: targetName.value,
       targetDate: targetDate.value,
-      targetTime: targetTime.value || '00:00',
+      targetTime: '00:00',
     });
     isFloatingWindowShown.value = true;
     console.log('悬浮窗已显示');
@@ -275,7 +273,6 @@ async function saveSettings() {
     return;
   }
 
-  // 先请求通知权限
   try {
     const permResult = await LocalNotifications.requestPermissions();
     hasPermission.value = permResult.display === 'granted';
@@ -286,7 +283,6 @@ async function saveSettings() {
   const settings = {
     targetName: targetName.value,
     targetDate: targetDate.value,
-    targetTime: targetTime.value,
     reminderTime: reminderTime.value,
     setAt: new Date().toISOString()
   };
@@ -297,14 +293,13 @@ async function saveSettings() {
   updateCountdown();
   await scheduleDailyNotifications();
 
-  // 设置闹钟后自动尝试显示悬浮窗
   try {
     const overlayPerm = await FloatingWindowPlugin.checkOverlayPermission();
     if (overlayPerm.granted) {
       await FloatingWindowPlugin.showFloatingWindow({
         targetName: targetName.value,
         targetDate: targetDate.value,
-        targetTime: targetTime.value || '00:00',
+        targetTime: '00:00',
       });
       isFloatingWindowShown.value = true;
     }
@@ -321,7 +316,6 @@ async function loadSavedSettings() {
       const settings = JSON.parse(value);
       targetName.value = settings.targetName || '';
       targetDate.value = settings.targetDate || '';
-      targetTime.value = settings.targetTime || '12:00';
       reminderTime.value = settings.reminderTime || '09:00';
       isAlarmSet.value = true;
       updateCountdown();
@@ -335,15 +329,37 @@ async function loadSavedSettings() {
   }
 }
 
+// 获取当前北京时间（从网络获取，不受设备时区和时间设置影响）
+async function getBeijingTime(): Promise<Date> {
+  try {
+    const response = await CapacitorHttp.get({
+      url: 'https://worldtimeapi.org/api/timezone/Asia/Shanghai'
+    });
+    const datetime = response.data.datetime;
+    return new Date(datetime);
+  } catch (error) {
+    console.warn('获取网络时间失败，使用本地时间降级方案:', error);
+    return getBeijingTimeFallback();
+  }
+}
+
+// 降级方案：将本地时间强制转换为北京时间
+function getBeijingTimeFallback(): Date {
+  const now = new Date();
+  const beijingOffset = 8 * 60;
+  const localOffset = now.getTimezoneOffset();
+  return new Date(now.getTime() + (localOffset + beijingOffset) * 60000);
+}
+
 // 更新倒计时
-function updateCountdown() {
+async function updateCountdown() {
   if (!isAlarmSet.value || !targetDate.value) return;
 
-  const [hours, minutes] = targetTime.value.split(':').map(Number);
-  const target = new Date(targetDate.value);
-  target.setHours(hours, minutes, 0, 0);
+  const now = await getBeijingTime();
 
-  const now = new Date();
+  const [month, day, year] = targetDate.value.split('/').map(Number);
+  const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+
   const diff = target.getTime() - now.getTime();
 
   if (diff <= 0) {
@@ -367,11 +383,11 @@ async function scheduleDailyNotifications() {
   try {
     const [hours, minutes] = reminderTime.value.split(':').map(Number);
 
-    const target = new Date(targetDate.value);
-    target.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const totalDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const now = await getBeijingTime();
+    const [month, day, year] = targetDate.value.split('/').map(Number);
+    const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const totalDays = Math.ceil((target.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
 
     // 使用原生 AlarmPlugin 设置闹钟（声音+震动）
     try {
@@ -385,7 +401,6 @@ async function scheduleDailyNotifications() {
       console.log('原生闹钟设置成功');
     } catch (e) {
       console.error('原生闹钟设置失败，降级到通知:', e);
-      // 降级方案：使用 LocalNotifications
       await scheduleLocalNotificationsFallback();
     }
   } catch (error) {
@@ -409,27 +424,23 @@ async function scheduleLocalNotificationsFallback() {
   const notifications = [];
   const [hours, minutes] = reminderTime.value.split(':').map(Number);
 
-  const target = new Date(targetDate.value);
-  target.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const totalDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const now = await getBeijingTime();
+  const [month, day, year] = targetDate.value.split('/').map(Number);
+  const target = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const totalDays = Math.ceil((target.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
 
   const daysToSchedule = Math.min(Math.max(totalDays, 0), 30);
 
-  for (let i = 0; i <= daysToSchedule; i++) {
-    const notifyDate = new Date();
-    notifyDate.setDate(notifyDate.getDate() + i);
-    notifyDate.setHours(hours, minutes, 0, 0);
+  for (let i = 0; i < daysToSchedule; i++) {
+    const notifyDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + i, hours, minutes, 0));
 
-    if (i === 0 && notifyDate.getTime() < Date.now()) {
+    if (notifyDate.getTime() < now.getTime()) {
       continue;
     }
 
     const daysRemaining = totalDays - i;
-    const body = daysRemaining > 0
-      ? `离${targetName.value}还有${daysRemaining}天`
-      : `今天就是${targetName.value}！`;
+    const body = `离${targetName.value}还有${daysRemaining}天`;
 
     notifications.push({
       id: i + 1,
@@ -480,7 +491,6 @@ async function cancelReminder() {
     isAlarmSet.value = false;
     targetName.value = '';
     targetDate.value = '';
-    targetTime.value = '12:00';
     reminderTime.value = '09:00';
     countdown.value = { days: 0, hours: 0, minutes: 0, seconds: 0 };
     totalRemaining.value = '';
@@ -514,30 +524,36 @@ function compareVersions(version1: string, version2: string): boolean {
   return false;
 }
 
-// 解析版本配置数据（修复问题1：JSON解析容错）
 function parseVersionData(responseData: any): { version: string; apkUrl: string } | null {
   if (!responseData) return null;
 
   let data: any;
   const rawString = typeof responseData === 'string' ? responseData : JSON.stringify(responseData);
 
-  // 优先尝试标准JSON格式（paste.rs配置文件）
   try {
     data = JSON.parse(rawString);
     if (data.version && data.apkUrl) {
       return { version: data.version, apkUrl: data.apkUrl };
     }
-    // 适配GitHub Releases API格式
-    if (data.tag_name && data.assets && data.assets.length > 0) {
-      const version = data.tag_name.replace(/^v/, '');
-      const apkUrl = data.assets[0].browser_download_url;
+    if (data.tag_name && data.assets && Array.isArray(data.assets) && data.assets.length > 0) {
+      const version = data.tag_name.replace(/^v/i, '').replace(/^release[-_]/i, '');
+      const apkAsset = data.assets.find((asset: any) => 
+        asset.browser_download_url && asset.browser_download_url.endsWith('.apk')
+      );
+      if (!apkAsset) {
+        console.log('[Update] GitHub API: 未找到.apk附件');
+        return null;
+      }
+      const apkUrl = apkAsset.browser_download_url;
       if (version && apkUrl) {
+        console.log('[Update] GitHub API解析成功: version=' + version + ', apkUrl=' + apkUrl);
         return { version, apkUrl };
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log('[Update] JSON解析失败:', e);
+  }
 
-  // 尝试URL参数格式
   try {
     const params = new URLSearchParams(rawString);
     const version = params.get('version');
@@ -547,7 +563,6 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
     }
   } catch (e) {}
 
-  // 尝试key=value文本格式
   try {
     const lines = rawString.trim().split('\n');
     let version = '';
@@ -567,72 +582,51 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
   return null;
 }
 
-// 检查更新 - 固定URL方案（GitHub Releases API）+ 多源备用
-// 核心改进：优先请求固定URL，解决"鸡生蛋"问题
+// 检查更新 - 以GitHub Releases API为唯一主源
+// 发布新版本时，只需在GitHub创建Release并上传APK，所有旧版本自动检测到更新
 async function checkForUpdate(manualUrl?: string) {
-  // 主源：paste.rs固定URL（当前版本v3.9.6）
-  // 发布新版本时，上传新的version.json到paste.rs，获得新URL
-  // 用户可通过"手动检查更新"功能输入新URL
-  const primaryUrls = [
+  const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest';
+
+  // 备用源：仅在GitHub API失败时使用（兜底）
+  const fallbackUrls = [
     'https://paste.rs/6plr5',
     'https://paste.rs/YnsTY',
     'https://paste.rs/bFZdK',
     'https://paste.rs/O32nP'
   ];
 
-  // 备用源：GitHub Releases API（当您在GitHub上创建Release后生效）
-  // 一旦创建Release，所有旧版本都能自动检测到新版本，无需修改代码
-  const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest';
-
-  // 历史备用源（向前兼容）
-  const fallbackUrls = [
-    // v3.9.6 旧源
-    'https://paste.rs/eknYc',
-    'https://paste.rs/XFbAc',
-    'https://paste.rs/8U6zH',
-    'https://paste.rs/NEyLm',
-    // v3.9.5 源
-    'https://paste.rs/OtePL',
-    'https://paste.rs/hQCv1',
-    'https://paste.rs/hAByT',
-    'https://paste.rs/qrGdV',
-    'https://paste.rs/MGUUM',
-    'https://paste.rs/gOUkq',
-    'https://paste.rs/jScXm',
-    'https://paste.rs/DnT6b',
-    // v3.9.4 源
-    'https://paste.rs/K4BnX',
-    'https://paste.rs/QN9Lu',
-    'https://paste.rs/4BF8i',
-    'https://paste.rs/KxwQD'
-  ];
-
-  // 构建URL列表：手动URL > paste.rs主源 > GitHub API > 历史备用源
+  // 构建URL列表：手动URL > GitHub API（唯一主源）> 备用源
   const urls = manualUrl
-    ? [manualUrl, ...primaryUrls, GITHUB_RELEASES_URL, ...fallbackUrls]
-    : [...primaryUrls, GITHUB_RELEASES_URL, ...fallbackUrls];
+    ? [manualUrl, GITHUB_RELEASES_URL, ...fallbackUrls]
+    : [GITHUB_RELEASES_URL, ...fallbackUrls];
 
   let foundVersion = '';
   let foundApkUrl = '';
 
   for (const url of urls) {
     try {
+      console.log('[Update] 正在请求更新源:', url);
       const response = await CapacitorHttp.get({
         url,
         headers: url.includes('api.github.com') ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {}
       });
+      console.log('[Update] 响应状态:', response.status);
       if (response.status === 200 && response.data) {
+        console.log('[Update] 响应数据:', typeof response.data === 'string' ? response.data : JSON.stringify(response.data).substring(0, 500) + '...');
         const parsed = parseVersionData(response.data);
+        console.log('[Update] 解析结果:', parsed);
         if (parsed) {
-          // 取所有源中版本号最高的
           if (!foundVersion || compareVersions(parsed.version, foundVersion)) {
+            console.log('[Update] 发现更高版本:', parsed.version, '替换旧版本:', foundVersion || '无');
             foundVersion = parsed.version;
             foundApkUrl = parsed.apkUrl;
+          } else {
+            console.log('[Update] 当前版本', parsed.version, '低于已发现版本', foundVersion, '跳过');
           }
         }
       }
     } catch (e) {
-      console.log('检查更新源失败:', url, e);
+      console.log('[Update] 检查更新源失败:', url, e);
     }
   }
 
@@ -987,20 +981,6 @@ onUnmounted(() => {
               type="date"
               v-model="targetDate"
               :min="minDate"
-              class="input-field"
-            />
-          </div>
-
-          <div class="form-group">
-            <label>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M11.99 2C6.47 2 2 6.48 2 12C2 17.52 6.47 22 11.99 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 11.99 2ZM12 20C7.58 20 4 16.42 4 12C4 7.58 7.58 4 12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20ZM12.5 7H11V13L16.25 16.15L17 14.92L12.5 12.25V7Z" fill="#2B7FFF"/>
-              </svg>
-              目标时间
-            </label>
-            <input
-              type="time"
-              v-model="targetTime"
               class="input-field"
             />
           </div>
