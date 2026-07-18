@@ -570,19 +570,28 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
 // 检查更新 - 固定URL方案（GitHub Releases API）+ 多源备用
 // 核心改进：优先请求固定URL，解决"鸡生蛋"问题
 async function checkForUpdate(manualUrl?: string) {
-  // 主源：GitHub Releases API（固定URL，内容可动态更新）
-  // 发布新版本时只需在GitHub上创建新Release，无需修改App代码
-  // 注意：请将下面的URL替换为您自己的GitHub仓库地址
+  // 主源：paste.rs固定URL（当前版本v3.9.6）
+  // 发布新版本时，上传新的version.json到paste.rs，获得新URL
+  // 用户可通过"手动检查更新"功能输入新URL
+  const primaryUrls = [
+    'https://paste.rs/6plr5',
+    'https://paste.rs/YnsTY',
+    'https://paste.rs/bFZdK',
+    'https://paste.rs/O32nP'
+  ];
+
+  // 备用源：GitHub Releases API（当您在GitHub上创建Release后生效）
+  // 一旦创建Release，所有旧版本都能自动检测到新版本，无需修改代码
   const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest';
 
-  // 备用源：paste.rs多源（向前兼容旧版本）
+  // 历史备用源（向前兼容）
   const fallbackUrls = [
-    // v3.9.6 备用源（指向ibg309.apk）
+    // v3.9.6 旧源
     'https://paste.rs/eknYc',
     'https://paste.rs/XFbAc',
     'https://paste.rs/8U6zH',
     'https://paste.rs/NEyLm',
-    // v3.9.5 旧版本源
+    // v3.9.5 源
     'https://paste.rs/OtePL',
     'https://paste.rs/hQCv1',
     'https://paste.rs/hAByT',
@@ -591,17 +600,17 @@ async function checkForUpdate(manualUrl?: string) {
     'https://paste.rs/gOUkq',
     'https://paste.rs/jScXm',
     'https://paste.rs/DnT6b',
-    // v3.9.4 旧版本源
+    // v3.9.4 源
     'https://paste.rs/K4BnX',
     'https://paste.rs/QN9Lu',
     'https://paste.rs/4BF8i',
     'https://paste.rs/KxwQD'
   ];
 
-  // 构建URL列表：手动URL > GitHub API > paste.rs多源
+  // 构建URL列表：手动URL > paste.rs主源 > GitHub API > 历史备用源
   const urls = manualUrl
-    ? [manualUrl, GITHUB_RELEASES_URL, ...fallbackUrls]
-    : [GITHUB_RELEASES_URL, ...fallbackUrls];
+    ? [manualUrl, ...primaryUrls, GITHUB_RELEASES_URL, ...fallbackUrls]
+    : [...primaryUrls, GITHUB_RELEASES_URL, ...fallbackUrls];
 
   let foundVersion = '';
   let foundApkUrl = '';
