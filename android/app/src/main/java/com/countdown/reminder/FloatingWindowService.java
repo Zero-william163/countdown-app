@@ -402,40 +402,43 @@ public class FloatingWindowService extends Service {
     private void setupTouchListener() {
         if (floatingView == null) return;
 
-        // 悬浮窗支持拖动，点击事件由 OnClickListener 处理
         floatingView.setOnTouchListener(new View.OnTouchListener() {
-            private int initialX, initialY;
-            private float initialTouchX, initialTouchY;
+            private float lastX;
+            private float lastY;
             private boolean isDragging = false;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        initialX = layoutParams.x;
-                        initialY = layoutParams.y;
-                        initialTouchX = event.getRawX();
-                        initialTouchY = event.getRawY();
+                        lastX = event.getRawX();
+                        lastY = event.getRawY();
                         isDragging = false;
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        float deltaX = event.getRawX() - initialTouchX;
-                        float deltaY = event.getRawY() - initialTouchY;
+                        float deltaX = event.getRawX() - lastX;
+                        float deltaY = event.getRawY() - lastY;
 
                         if (!isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
                             isDragging = true;
                         }
 
                         if (isDragging) {
-                            layoutParams.x = initialX + (int) deltaX;
-                            layoutParams.y = initialY + (int) deltaY;
-                            windowManager.updateViewLayout(floatingView, layoutParams);
+                            layoutParams.x += (int) deltaX;
+                            layoutParams.y += (int) deltaY;
+
+                            WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+                            if (wm != null) {
+                                wm.updateViewLayout(floatingView, layoutParams);
+                            }
+
+                            lastX = event.getRawX();
+                            lastY = event.getRawY();
                         }
                         return true;
 
                     case MotionEvent.ACTION_UP:
-                        // 如果是拖动，消费事件；如果是点击，不消费（让 OnClickListener 处理）
                         return isDragging;
 
                     case MotionEvent.ACTION_CANCEL:
