@@ -64,7 +64,7 @@
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.countdown.reminder.STOP_ALARM" />
+                <action android:name="com.william163.countdown.STOP_ALARM" />
             </intent-filter>
         </receiver>
 

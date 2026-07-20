@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.countdown.reminder',
+    appId: 'com.william163.countdown',
   appName: '倒计时提醒',
   webDir: 'dist',
   plugins: {

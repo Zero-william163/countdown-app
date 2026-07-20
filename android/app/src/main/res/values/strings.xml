@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">倒计时提醒</string>
     <string name="title_activity_main">倒计时提醒</string>
-    <string name="package_name">com.countdown.reminder</string>
-    <string name="custom_url_scheme">com.countdown.reminder</string>
+    <string name="package_name">com.william163.countdown</string>
+    <string name="custom_url_scheme">com.william163.countdown</string>
     <string name="widget_description">倒计时桌面小组件</string>
 </resources>

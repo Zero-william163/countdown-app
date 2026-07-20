@@ -1,4 +1,4 @@
-package com.countdown.reminder
+package com.william163.countdown
 
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver

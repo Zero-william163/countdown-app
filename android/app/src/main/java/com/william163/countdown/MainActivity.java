@@ -1,4 +1,4 @@
-package com.countdown.reminder;
+package com.william163.countdown;
 
 import android.app.DownloadManager;
 import android.app.NotificationChannel;

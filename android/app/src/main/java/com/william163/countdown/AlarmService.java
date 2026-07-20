@@ -1,4 +1,4 @@
-package com.countdown.reminder;
+package com.william163.countdown;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -168,7 +168,7 @@ public class AlarmService extends Service {
 
         // 关闭闹钟的按钮
         Intent stopIntent = new Intent(this, AlarmStopReceiver.class);
-        stopIntent.setAction("com.countdown.reminder.STOP_ALARM");
+        stopIntent.setAction("com.william163.countdown.STOP_ALARM");
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
             this, 0, stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE

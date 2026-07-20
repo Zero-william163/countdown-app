@@ -1,4 +1,4 @@
-package com.countdown.reminder;
+package com.william163.countdown;
 
 import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
@@ -12,7 +12,7 @@ import android.util.Log;
  */
 public class AlarmStopReceiver extends BroadcastReceiver {
     private static final String TAG = "AlarmStopReceiver";
-    public static final String ACTION_STOP_ALARM = "com.countdown.reminder.STOP_ALARM";
+    public static final String ACTION_STOP_ALARM = "com.william163.countdown.STOP_ALARM";
 
     @Override
     public void onReceive(Context context, Intent intent) {

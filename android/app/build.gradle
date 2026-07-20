@@ -2,14 +2,14 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace = "com.countdown.reminder"
+    namespace = "com.william163.countdown"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.countdown.reminder"
+        applicationId "com.william163.countdown"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 62
-        versionName "3.9.23"
+        versionCode 63
+        versionName "3.9.24"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'

@@ -1,4 +1,4 @@
-package com.countdown.reminder;
+package com.william163.countdown;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
