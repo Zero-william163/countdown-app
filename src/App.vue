@@ -1126,7 +1126,7 @@ onUnmounted(() => {
                 <span v-if="hasBatteryOptimization" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">防止系统休眠时杀掉闹钟，确保后台准时提醒</p>
+              <p class="permission-item-desc">防止系统休眠时杀掉后台，确保闹钟准时提醒、小组件正常刷新</p>
             </div>
             <svg v-if="hasBatteryOptimization" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
@@ -1140,7 +1140,7 @@ onUnmounted(() => {
                 <span v-if="hasAutoStartPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟（跳转后请手动确认）</p>
+              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟、刷新桌面小组件（跳转后请手动确认）</p>
             </div>
             <svg v-if="hasAutoStartPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
