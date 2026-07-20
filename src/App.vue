@@ -631,83 +631,38 @@ async function manualCheckUpdate() {
   }
 }
 
-// 更新应用 - 使用DownloadManager下载并自动安装
+// 更新应用 - 直接跳转浏览器下载（避免华为等系统安全拦截）
 async function updateApp() {
   if (!latestApkUrl.value) {
     alert('下载链接无效');
     return;
   }
 
+  // 【安全方案】直接跳转浏览器下载，避免触发系统安全拦截
+  // 华为等国产系统对应用内直接下载APK会触发安全校验死循环
   showUpdateDialog.value = true;
-  isUpdating.value = true;
-  updateStatus.value = '正在准备下载...';
+  updateStatus.value = `即将跳转浏览器下载 v${latestVersion.value}...\n\n下载完成后请手动安装。`;
 
-  try {
-    const permResult = await UpdatePlugin.checkInstallPermission();
-    if (!permResult.granted) {
-      updateStatus.value = '需要安装权限，正在跳转设置...';
-      await UpdatePlugin.requestInstallPermission();
-      setTimeout(async () => {
-        const recheck = await UpdatePlugin.checkInstallPermission();
-        if (recheck.granted) {
-          await startDownload();
-        } else {
-          isUpdating.value = false;
-          updateStatus.value = '未授予安装权限，无法更新';
-        }
-      }, 3000);
-      return;
-    }
-
-    await startDownload();
-  } catch (e) {
-    console.error('更新失败:', e);
-    isUpdating.value = false;
-    updateStatus.value = '更新失败: ' + (e as Error).message;
+  setTimeout(async () => {
     try {
+      // 尝试使用系统浏览器打开
       await PermissionChecker.openUrl({ url: latestApkUrl.value });
-    } catch (ee) {
-      window.open(latestApkUrl.value, '_blank');
+      console.log('[Update] 已跳转浏览器下载:', latestApkUrl.value);
+    } catch (e) {
+      // 降级：使用 window.open
+      console.log('[Update] openUrl 失败，使用 window.open:', e);
+      window.open(latestApkUrl.value, '_system');
     }
-  }
+
+    // 关闭对话框
+    setTimeout(() => {
+      showUpdateDialog.value = false;
+      showUpdateNotice.value = false;
+    }, 2000);
+  }, 1000);
 }
 
-// 开始下载APK
-async function startDownload() {
-  isUpdating.value = true;
-  updateStatus.value = '正在下载新版本...';
-  try {
-    const result = await UpdatePlugin.downloadAndInstall({ url: latestApkUrl.value });
-    if (result.success) {
-      updateStatus.value = '下载已开始，请查看通知栏进度。下载完成后将自动弹出安装界面。';
-      // 记录已下载的版本号，避免下次启动重复下载
-      if (latestVersion.value) {
-        localStorage.setItem(DOWNLOADED_VERSION_KEY, latestVersion.value);
-        console.log('[Update] 已记录下载版本号:', latestVersion.value);
-      }
-      // 隐藏顶部更新提示条
-      showUpdateNotice.value = false;
-      // 10秒后自动关闭对话框
-      setTimeout(() => {
-        showUpdateDialog.value = false;
-        isUpdating.value = false;
-      }, 10000);
-    }
-  } catch (e) {
-    const errMsg = (e as Error).message || '';
-    if (errMsg.includes('NEED_INSTALL_PERMISSION')) {
-      updateStatus.value = '需要安装权限，请在设置中允许安装未知应用';
-    } else {
-      updateStatus.value = '下载失败，正在使用浏览器下载...';
-      try {
-        await PermissionChecker.openUrl({ url: latestApkUrl.value });
-      } catch (ee) {
-        window.open(latestApkUrl.value, '_blank');
-      }
-    }
-    isUpdating.value = false;
-  }
-}
+
 
 // 关闭更新对话框
 function closeUpdateDialog() {
@@ -778,12 +733,10 @@ onMounted(async () => {
     console.error('检查权限失败:', e);
   }
 
-  // 4. 检查更新
-  try {
-    await checkForUpdate();
-  } catch (e) {
-    console.error('检查更新失败:', e);
-  }
+  // 4. 【已移除】启动时不再自动检查更新
+  // 避免华为等国产系统安全拦截死循环
+  // 用户可手动在设置中点击"检查更新"
+  console.log('[Update] 启动时跳过自动检查更新，避免系统拦截');
 
   timer = window.setInterval(() => {
     updateCountdown();
@@ -1191,14 +1144,7 @@ onUnmounted(() => {
       <div class="confirm-card">
         <h3 style="margin-bottom: 12px; color: #1a1a1a;">应用更新</h3>
         <p style="margin-bottom: 16px; color: #666; text-align: center; line-height: 1.6;">{{ updateStatus }}</p>
-        <div v-if="isUpdating" style="display: flex; justify-content: center; margin: 16px 0;">
-          <div style="width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top: 3px solid #2B7FFF; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-        </div>
-        <div class="confirm-actions" v-if="!isUpdating">
-          <button class="btn-text" @click="closeUpdateDialog">{{ latestVersion && compareVersions(latestVersion, appVersion) ? '稍后' : '关闭' }}</button>
-          <button v-if="latestVersion && compareVersions(latestVersion, appVersion)" class="btn-text btn-primary-text" @click="startDownload">立即更新</button>
-        </div>
-        <div class="confirm-actions" v-else>
+        <div class="confirm-actions">
           <button class="btn-text" @click="closeUpdateDialog">关闭</button>
         </div>
       </div>
