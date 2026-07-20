@@ -198,6 +198,9 @@ public class UpdatePlugin extends Plugin {
     @PluginMethod
     public void updateWidget(PluginCall call) {
         try {
+            // 启动定时刷新闹钟（确保桌面时间实时更新）
+            CountdownWidget.startWidgetUpdateAlarm(getContext());
+            // 立即刷新一次
             CountdownWidget.updateAllWidgets(getContext());
 
             JSObject result = new JSObject();

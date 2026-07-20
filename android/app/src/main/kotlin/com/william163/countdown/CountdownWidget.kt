@@ -1,5 +1,6 @@
 package com.william163.countdown
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -9,16 +10,21 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import android.widget.RemoteViews
+import java.util.Calendar
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /**
  * 传统 RemoteViews 桌面小组件
  * 纯传统方案，兼容 Android 7.0+ (API 24+)
+ * 支持每分钟自动刷新，与 App 内北京时间倒计时同步
  */
 class CountdownWidget : AppWidgetProvider() {
 
     companion object {
         private const val TAG = "CountdownWidget"
+        private const val ACTION_UPDATE_WIDGET_TIME = "com.william163.countdown.UPDATE_WIDGET_TIME"
+        private const val UPDATE_INTERVAL_MILLIS = 60 * 1000L // 每分钟更新一次
 
         @JvmStatic
         fun updateAllWidgets(context: Context) {
@@ -40,6 +46,63 @@ class CountdownWidget : AppWidgetProvider() {
                 Log.e(TAG, "updateAllWidgets 失败", e)
             }
         }
+
+        /**
+         * 启动小组件定时更新闹钟
+         * 每分钟触发一次，确保桌面时间实时刷新
+         */
+        @JvmStatic
+        fun startWidgetUpdateAlarm(context: Context) {
+            try {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val intent = Intent(context, CountdownWidget::class.java).apply {
+                    action = ACTION_UPDATE_WIDGET_TIME
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
+
+                // 取消旧的闹钟再重新设置，避免重复
+                alarmManager.cancel(pendingIntent)
+
+                val triggerAtMillis = System.currentTimeMillis() + 1000
+                alarmManager.setRepeating(
+                    AlarmManager.RTC,
+                    triggerAtMillis,
+                    UPDATE_INTERVAL_MILLIS,
+                    pendingIntent
+                )
+                Log.d(TAG, "已启动小组件定时更新，间隔 ${UPDATE_INTERVAL_MILLIS}ms")
+            } catch (e: Exception) {
+                Log.e(TAG, "启动小组件定时更新失败", e)
+            }
+        }
+
+        /**
+         * 停止小组件定时更新闹钟
+         */
+        @JvmStatic
+        fun stopWidgetUpdateAlarm(context: Context) {
+            try {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val intent = Intent(context, CountdownWidget::class.java).apply {
+                    action = ACTION_UPDATE_WIDGET_TIME
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
+                alarmManager.cancel(pendingIntent)
+                Log.d(TAG, "已停止小组件定时更新")
+            } catch (e: Exception) {
+                Log.e(TAG, "停止小组件定时更新失败", e)
+            }
+        }
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -52,9 +115,26 @@ class CountdownWidget : AppWidgetProvider() {
         }
     }
 
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        // 第一个小组件被添加时启动定时更新
+        startWidgetUpdateAlarm(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        // 最后一个小组件被移除时停止定时更新
+        stopWidgetUpdateAlarm(context)
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         try {
             super.onReceive(context, intent)
+
+            // 处理每分钟定时刷新广播
+            if (intent.action == ACTION_UPDATE_WIDGET_TIME) {
+                updateAllWidgets(context)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "onReceive 异常", e)
         }
@@ -83,7 +163,7 @@ class CountdownWidget : AppWidgetProvider() {
                 Log.e(TAG, "读取设置失败", e)
             }
 
-            // 安全计算倒计时
+            // 安全计算倒计时（使用北京时间，与 App 内同步）
             val result = calculateCountdown(targetDateStr)
 
             // 设置文本
@@ -122,6 +202,10 @@ class CountdownWidget : AppWidgetProvider() {
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
+    /**
+     * 使用北京时间计算倒计时，与 App 内逻辑保持一致
+     * App 内逻辑：目标日期按 UTC 0 点，当前时间用北京时间
+     */
     private fun calculateCountdown(targetDateStr: String): CountdownResult {
         if (targetDateStr.isBlank()) {
             return CountdownResult(0, 0, 0, 0, false)
@@ -139,18 +223,25 @@ class CountdownWidget : AppWidgetProvider() {
                 return CountdownResult(0, 0, 0, 0, false)
             }
 
-            val targetCal = java.util.Calendar.getInstance()
+            // 目标日期按 UTC 0 点计算
+            val targetCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             targetCal.set(year, month - 1, day, 0, 0, 0)
-            targetCal.set(java.util.Calendar.MILLISECOND, 0)
+            targetCal.set(Calendar.MILLISECOND, 0)
+            val targetMillis = targetCal.timeInMillis
 
+            // 当前时间转换为北京时间（与 App 内 getBeijingTimeFallback 一致）
             val now = System.currentTimeMillis()
-            val diff = targetCal.timeInMillis - now
+            val beijingOffsetMillis = TimeUnit.HOURS.toMillis(8)
+            val localOffsetMillis = TimeZone.getDefault().getOffset(now).toLong()
+            val beijingNowMillis = now + beijingOffsetMillis - localOffsetMillis
+
+            val diff = targetMillis - beijingNowMillis
 
             if (diff <= 0) {
                 CountdownResult(0, 0, 0, 0, false)
             } else {
                 val days = TimeUnit.MILLISECONDS.toDays(diff)
-                val remaining = diff % (1000 * 60 * 60 * 24)
+                val remaining = diff % TimeUnit.DAYS.toMillis(1)
                 val hours = TimeUnit.MILLISECONDS.toHours(remaining)
                 val mins = TimeUnit.MILLISECONDS.toMinutes(remaining) % 60
                 val secs = TimeUnit.MILLISECONDS.toSeconds(remaining) % 60

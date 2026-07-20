@@ -456,6 +456,14 @@ async function cancelReminder() {
     totalRemaining.value = '';
     showResetConfirm.value = false;
     showSettings.value = true;
+
+    // 重置后也更新小组件，显示未设置状态
+    try {
+      await UpdatePlugin.updateWidget();
+      console.log('[Widget] 重置后小组件已更新');
+    } catch (e) {
+      console.log('[Widget] 重置后更新小组件失败:', e);
+    }
   } catch (error) {
     console.error('取消提醒失败:', error);
   }
@@ -545,9 +553,6 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
 // 检查更新 - 以GitHub Releases API为唯一主源
 // 发布新版本时，只需在GitHub创建Release并上传APK，所有旧版本自动检测到更新
 async function checkForUpdate(manualUrl?: string) {
-  // 主源：GitHub Releases API（官方、最可靠）
-  const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest';
-
   // GitHub API 镜像（国内访问加速，防止 GitHub API 被墙导致检测失败）
   const GITHUB_API_MIRRORS = [
     'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
@@ -628,7 +633,7 @@ interface DownloadSource {
   url: string;
 }
 
-function getDownloadUrls(version: string, baseUrl: string): DownloadSource[] {
+function getDownloadUrls(_version: string, baseUrl: string): DownloadSource[] {
   const urls: DownloadSource[] = [];
   
   // 1. GitHub 官方源（最可靠，但国内可能慢）
@@ -806,9 +811,10 @@ async function requestAddWidget() {
     console.log('[Widget] 请求结果:', result);
 
     if (result.success && result.requested) {
-      alert('请点击桌面空白处长按，选择"小组件"或"Widget"，找到"倒计时提醒"添加。');
+      // 系统已弹出添加小组件对话框，静默等待用户操作
+      console.log('[Widget] 系统已弹出添加小组件对话框');
     } else if (result.message) {
-      alert(result.message);
+      console.log('[Widget] 添加小组件:', result.message);
     }
   } catch (e) {
     console.log('[Widget] 请求失败:', e);
