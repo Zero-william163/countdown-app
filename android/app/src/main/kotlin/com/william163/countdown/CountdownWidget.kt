@@ -50,6 +50,7 @@ class CountdownWidget : AppWidgetProvider() {
         /**
          * 启动小组件定时更新闹钟
          * 每分钟触发一次，确保桌面时间实时刷新
+         * 使用 setExactAndAllowWhileIdle 确保后台也能精确触发
          */
         @JvmStatic
         fun startWidgetUpdateAlarm(context: Context) {
@@ -68,16 +69,37 @@ class CountdownWidget : AppWidgetProvider() {
                 // 取消旧的闹钟再重新设置，避免重复
                 alarmManager.cancel(pendingIntent)
 
-                val triggerAtMillis = System.currentTimeMillis() + 1000
-                alarmManager.setRepeating(
-                    AlarmManager.RTC,
-                    triggerAtMillis,
-                    UPDATE_INTERVAL_MILLIS,
-                    pendingIntent
-                )
-                Log.d(TAG, "已启动小组件定时更新，间隔 ${UPDATE_INTERVAL_MILLIS}ms")
+                // 设置下一次触发时间
+                scheduleNextWidgetUpdate(context, alarmManager, pendingIntent)
+                Log.d(TAG, "已启动小组件定时更新")
             } catch (e: Exception) {
                 Log.e(TAG, "启动小组件定时更新失败", e)
+            }
+        }
+
+        /**
+         * 调度下一次小组件更新
+         * 使用 setExactAndAllowWhileIdle 确保在后台也能精确触发
+         */
+        private fun scheduleNextWidgetUpdate(context: Context, alarmManager: AlarmManager, pendingIntent: PendingIntent) {
+            try {
+                val nextTriggerTime = System.currentTimeMillis() + UPDATE_INTERVAL_MILLIS
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC,
+                        nextTriggerTime,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setExact(
+                        AlarmManager.RTC,
+                        nextTriggerTime,
+                        pendingIntent
+                    )
+                }
+                Log.d(TAG, "已调度下一次小组件更新: ${nextTriggerTime}")
+            } catch (e: Exception) {
+                Log.e(TAG, "调度小组件更新失败", e)
             }
         }
 
@@ -134,9 +156,32 @@ class CountdownWidget : AppWidgetProvider() {
             // 处理每分钟定时刷新广播
             if (intent.action == ACTION_UPDATE_WIDGET_TIME) {
                 updateAllWidgets(context)
+                // 重新调度下一次更新（setExactAndAllowWhileIdle 需要每次手动设置）
+                rescheduleWidgetUpdate(context)
             }
         } catch (e: Exception) {
             Log.e(TAG, "onReceive 异常", e)
+        }
+    }
+
+    /**
+     * 重新调度小组件更新
+     */
+    private fun rescheduleWidgetUpdate(context: Context) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, CountdownWidget::class.java).apply {
+                action = ACTION_UPDATE_WIDGET_TIME
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags)
+            scheduleNextWidgetUpdate(context, alarmManager, pendingIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "重新调度小组件更新失败", e)
         }
     }
 
@@ -164,7 +209,7 @@ class CountdownWidget : AppWidgetProvider() {
             }
 
             // 安全计算倒计时（使用北京时间，与 App 内同步）
-            val result = calculateCountdown(targetDateStr)
+            val result = calculateCountdown(context, targetDateStr)
 
             // 设置文本
             views.setTextViewText(R.id.widget_title, targetName)
@@ -204,9 +249,9 @@ class CountdownWidget : AppWidgetProvider() {
 
     /**
      * 使用北京时间计算倒计时，与 App 内逻辑保持一致
-     * App 内逻辑：目标日期按 UTC 0 点，当前时间用北京时间
+     * App 内逻辑：目标日期按 UTC 0 点，当前时间用北京时间（优先使用网络时间偏移量）
      */
-    private fun calculateCountdown(targetDateStr: String): CountdownResult {
+    private fun calculateCountdown(context: Context, targetDateStr: String): CountdownResult {
         if (targetDateStr.isBlank()) {
             return CountdownResult(0, 0, 0, 0, false)
         }
@@ -223,16 +268,24 @@ class CountdownWidget : AppWidgetProvider() {
                 return CountdownResult(0, 0, 0, 0, false)
             }
 
-            // 目标日期按 UTC 0 点计算
             val targetCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             targetCal.set(year, month - 1, day, 0, 0, 0)
             targetCal.set(Calendar.MILLISECOND, 0)
             val targetMillis = targetCal.timeInMillis
 
-            // 当前时间转换为北京时间（与 App 内 getBeijingTimeFallback 一致）
-            val now = System.currentTimeMillis()
+            // 读取网络时间偏移量（App 内保存）
+            val prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
+            val timeOffsetStr = prefs.getString("time_offset", "0")
+            val timeOffset = try {
+                timeOffsetStr?.toLong() ?: 0L
+            } catch (e: Exception) {
+                0L
+            }
+
+            // 当前时间 = 本地时间 + 网络时间偏移量
+            val now = System.currentTimeMillis() + timeOffset
             val beijingOffsetMillis = TimeUnit.HOURS.toMillis(8)
-            val localOffsetMillis = TimeZone.getDefault().getOffset(now).toLong()
+            val localOffsetMillis = TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
             val beijingNowMillis = now + beijingOffsetMillis - localOffsetMillis
 
             val diff = targetMillis - beijingNowMillis

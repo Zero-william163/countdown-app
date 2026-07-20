@@ -285,6 +285,11 @@ async function getBeijingTime(): Promise<Date> {
       url: 'https://worldtimeapi.org/api/timezone/Asia/Shanghai'
     });
     const datetime = response.data.datetime;
+    const networkTime = new Date(datetime).getTime();
+    const localTime = Date.now();
+    const offset = networkTime - localTime;
+    await Preferences.set({ key: 'time_offset', value: offset.toString() });
+    console.log('[Time] 网络时间:', new Date(networkTime), '本地时间:', new Date(localTime), '偏移量:', offset);
     return new Date(datetime);
   } catch (error) {
     console.warn('获取网络时间失败，使用本地时间降级方案:', error);
