@@ -545,19 +545,19 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
 // 检查更新 - 以GitHub Releases API为唯一主源
 // 发布新版本时，只需在GitHub创建Release并上传APK，所有旧版本自动检测到更新
 async function checkForUpdate(manualUrl?: string) {
+  // 主源：GitHub Releases API（官方、最可靠）
   const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest';
 
-  // 备用源：仅在GitHub API失败时使用（兜底）
-  const fallbackUrls = [
-    'https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
-    'https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
-    'https://paste.rs/hm54T'
+  // GitHub API 镜像（国内访问加速，防止 GitHub API 被墙导致检测失败）
+  const GITHUB_API_MIRRORS = [
+    'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
+    'https://gh-proxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
+    'https://ghfast.top/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
+    'https://cors.istack.io/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest'
   ];
 
-  // 构建URL列表：手动URL > GitHub API（唯一主源）> 备用源
-  const urls = manualUrl
-    ? [manualUrl, GITHUB_RELEASES_URL, ...fallbackUrls]
-    : [GITHUB_RELEASES_URL, ...fallbackUrls];
+  // 构建URL列表：手动URL > GitHub API 镜像列表
+  const urls = manualUrl ? [manualUrl, ...GITHUB_API_MIRRORS] : GITHUB_API_MIRRORS;
 
   let foundVersion = '';
   let foundApkUrl = '';
@@ -565,10 +565,14 @@ async function checkForUpdate(manualUrl?: string) {
   for (const url of urls) {
     try {
       console.log('[Update] 正在请求更新源:', url);
+      const isGithubApi = url.includes('api.github.com');
       const response = await CapacitorHttp.get({
         url,
-        headers: url.includes('api.github.com') ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {}
-      });
+        headers: isGithubApi ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {},
+        // 设置超时 15 秒，避免某个镜像卡住整个检测流程
+        connectTimeout: 15000,
+        readTimeout: 15000
+      } as any);
       console.log('[Update] 响应状态:', response.status);
       if (response.status === 200 && response.data) {
         console.log('[Update] 响应数据:', typeof response.data === 'string' ? response.data : JSON.stringify(response.data).substring(0, 500) + '...');
@@ -650,7 +654,7 @@ async function manualCheckUpdate() {
   if (isCheckingUpdate.value) return;
 
   isCheckingUpdate.value = true;
-  updateStatus.value = '正在检查更新...';
+  updateStatus.value = '正在检查更新...\n（尝试多个源，可能需要 10-20 秒）';
   showUpdateDialog.value = true;
 
   try {
@@ -663,8 +667,12 @@ async function manualCheckUpdate() {
         updateStatus.value = `发现新版本 v${latestVersion.value}\n但无法获取下载链接，请稍后重试`;
       }
       isUpdating.value = false;
+    } else if (!latestVersion.value) {
+      // 没检测到任何版本，说明所有源都失败了
+      updateStatus.value = '检查更新失败\n\n可能原因：\n1. 网络连接不稳定\n2. GitHub 暂时无法访问\n\n请稍后重试，或手动到 GitHub 下载：\ngithub.com/Zero-william163/countdown-app/releases';
+      isUpdating.value = false;
     } else {
-      updateStatus.value = '已是最新版本';
+      updateStatus.value = `已是最新版本 (v${appVersion.value})`;
       isUpdating.value = false;
       setTimeout(() => {
         showUpdateDialog.value = false;
@@ -673,8 +681,10 @@ async function manualCheckUpdate() {
   } catch (e) {
     updateStatus.value = '检查更新失败，请稍后重试';
     isUpdating.value = false;
-    isCheckingUpdate.value = false;
     console.error('[Update] 手动检查更新失败:', e);
+  } finally {
+    // 确保按钮始终可以再次点击
+    isCheckingUpdate.value = false;
   }
 }
 
