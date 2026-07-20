@@ -1,6 +1,7 @@
 package com.william163.countdown;
 
 import android.app.DownloadManager;
+import android.appwidget.AppWidgetManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -8,12 +9,14 @@ import android.content.IntentFilter;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
 import android.content.ComponentName;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.util.Log;
+import android.widget.RemoteViews;
 
 import androidx.core.content.FileProvider;
 
@@ -206,6 +209,80 @@ public class UpdatePlugin extends Plugin {
             Log.e(TAG, "更新小组件失败", e);
             call.reject("更新小组件失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 检查用户是否已添加 Widget 到桌面
+     * Android 8.0+ 支持 requestPinAppWidget，可以检测
+     */
+    @PluginMethod
+    public void isWidgetPinned(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(getContext());
+            ComponentName componentName = new ComponentName(getContext(), CountdownWidgetReceiver.class);
+            
+            // 获取所有已添加的 Widget ID
+            int[] widgetIds = appWidgetManager.getAppWidgetIds(componentName);
+            
+            // 如果有 Widget ID，说明用户已添加
+            boolean isPinned = widgetIds != null && widgetIds.length > 0;
+            
+            result.put("isPinned", isPinned);
+            result.put("count", widgetIds != null ? widgetIds.length : 0);
+            result.put("success", true);
+            
+            Log.d(TAG, "Widget 已添加: " + isPinned + ", 数量: " + (widgetIds != null ? widgetIds.length : 0));
+        } catch (Exception e) {
+            Log.e(TAG, "检查 Widget 状态失败", e);
+            result.put("isPinned", false);
+            result.put("success", false);
+        }
+        call.resolve(result);
+    }
+
+    /**
+     * 请求添加 Widget 到桌面（Android 8.0+）
+     * 系统会弹出确认对话框，用户点击"添加"即可
+     */
+    @PluginMethod
+    public void requestPinWidget(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(getContext());
+                ComponentName componentName = new ComponentName(getContext(), CountdownWidgetReceiver.class);
+                
+                // 检查系统是否支持请求添加 Widget
+                if (appWidgetManager.isRequestPinAppWidgetSupported()) {
+                    // 调用系统 API，弹出添加确认对话框
+                    boolean success = appWidgetManager.requestPinAppWidget(componentName, null, null);
+                    
+                    result.put("success", true);
+                    result.put("requested", success);
+                    result.put("message", "系统已弹出添加小组件对话框");
+                    Log.d(TAG, "请求添加 Widget: " + success);
+                } else {
+                    // 当前桌面启动器不支持自动添加（少见情况）
+                    result.put("success", false);
+                    result.put("requested", false);
+                    result.put("message", "当前桌面不支持自动添加，请手动添加");
+                    Log.w(TAG, "当前桌面不支持 requestPinAppWidget");
+                }
+            } else {
+                // Android 8.0 以下不支持自动添加
+                result.put("success", false);
+                result.put("requested", false);
+                result.put("message", "Android 8.0 以下不支持自动添加，请手动添加");
+                Log.w(TAG, "Android 版本过低，不支持 requestPinAppWidget");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "请求添加 Widget 失败", e);
+            result.put("success", false);
+            result.put("requested", false);
+            result.put("message", "请求失败: " + e.getMessage());
+        }
+        call.resolve(result);
     }
 
     private void registerDownloadReceiver() {

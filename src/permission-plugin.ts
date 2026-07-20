@@ -34,6 +34,8 @@ export interface UpdatePluginInterface {
   requestInstallPermission(): Promise<void>;
   getAppVersion(): Promise<{ version: string; versionCode: number; success: boolean }>;
   updateWidget(): Promise<{ success: boolean }>;
+  isWidgetPinned(): Promise<{ isPinned: boolean; count: number; success: boolean }>;
+  requestPinWidget(): Promise<{ success: boolean; requested: boolean; message: string }>;
 }
 
 export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin', {
@@ -43,6 +45,8 @@ export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin'
     requestInstallPermission: () => Promise.resolve(),
     getAppVersion: () => Promise.resolve({ version: '0.0.0', versionCode: 0, success: false }),
     updateWidget: () => Promise.resolve({ success: false }),
+    isWidgetPinned: () => Promise.resolve({ isPinned: false, count: 0, success: false }),
+    requestPinWidget: () => Promise.resolve({ success: false, requested: false, message: 'Web platform' }),
   },
 });
 

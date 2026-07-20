@@ -239,6 +239,31 @@ async function saveSettings() {
   } catch (e) {
     console.log('[Widget] 更新小组件失败:', e);
   }
+
+  // 【新增】检查用户是否已添加 Widget，如果没有则自动请求添加
+  try {
+    const widgetStatus = await UpdatePlugin.isWidgetPinned();
+    console.log('[Widget] Widget 状态:', widgetStatus);
+
+    if (!widgetStatus.isPinned && widgetStatus.success) {
+      // 用户还没有添加 Widget，请求添加
+      console.log('[Widget] 检测到用户未添加 Widget，正在请求添加...');
+      const result = await UpdatePlugin.requestPinWidget();
+      console.log('[Widget] 请求结果:', result);
+
+      if (result.success) {
+        console.log('[Widget] 系统已弹出添加小组件对话框，等待用户确认');
+      } else {
+        // 系统不支持自动添加，显示引导（但不阻塞流程）
+        console.log('[Widget] 系统不支持自动添加:', result.message);
+      }
+    } else if (widgetStatus.isPinned) {
+      console.log('[Widget] 用户已添加 Widget，数量:', widgetStatus.count);
+    }
+  } catch (e) {
+    console.log('[Widget] 检查/请求 Widget 失败:', e);
+    // 不影响主流程，静默失败
+  }
 }
 
 // 加载设置
@@ -1038,7 +1063,7 @@ onUnmounted(() => {
                 <span>添加桌面小组件</span>
                 <span class="perm-badge perm-badge-info">推荐</span>
               </div>
-              <p class="permission-item-desc">把倒计时放到桌面，随时查看剩余天数</p>
+              <p class="permission-item-desc">设置倒计时后自动弹出添加窗口，后台被杀也不会消失</p>
             </div>
             <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
