@@ -522,10 +522,9 @@ async function checkForUpdate(manualUrl?: string) {
 
   // 备用源：仅在GitHub API失败时使用（兜底）
   const fallbackUrls = [
-    'https://paste.rs/6plr5',
-    'https://paste.rs/YnsTY',
-    'https://paste.rs/bFZdK',
-    'https://paste.rs/O32nP'
+    'https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
+    'https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
+    'https://paste.rs/hm54T'
   ];
 
   // 构建URL列表：手动URL > GitHub API（唯一主源）> 备用源
