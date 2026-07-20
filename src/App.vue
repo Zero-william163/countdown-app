@@ -1171,6 +1171,7 @@ onUnmounted(() => {
         <p style="margin-bottom: 16px; color: #666; text-align: center; line-height: 1.6;">{{ updateStatus }}</p>
         <div class="confirm-actions">
           <button class="btn-text" @click="closeUpdateDialog">关闭</button>
+          <button v-if="latestVersion && compareVersions(latestVersion, appVersion)" class="btn-text btn-primary-text" @click="updateApp">开始下载</button>
         </div>
       </div>
     </div>
