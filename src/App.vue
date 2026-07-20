@@ -32,6 +32,8 @@ const showUpdateDialog = ref(false);
 const hasAutoStartPermission = ref(false); // 自启动权限
   const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
 const isCheckingUpdate = ref(false); // 是否正在检查更新
+const widgetPinned = ref(false); // 小组件是否已添加到桌面
+const widgetCount = ref(0); // 已添加的小组件数量
 
 const countdown = ref({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 const totalRemaining = ref('');
@@ -645,16 +647,20 @@ function getDownloadUrls(version: string, baseUrl: string): DownloadSource[] {
 // 手动检查更新（设置中调用）
 async function manualCheckUpdate() {
   if (isCheckingUpdate.value) return;
-  
+
   isCheckingUpdate.value = true;
   updateStatus.value = '正在检查更新...';
   showUpdateDialog.value = true;
-  
+
   try {
     await checkForUpdate();
-    
+
     if (latestVersion.value && compareVersions(latestVersion.value, appVersion.value)) {
-      updateStatus.value = `发现新版本 v${latestVersion.value}，点击确定开始下载`;
+      if (latestApkUrl.value) {
+        updateStatus.value = `发现新版本 v${latestVersion.value}\n请选择下载方式：`;
+      } else {
+        updateStatus.value = `发现新版本 v${latestVersion.value}\n但无法获取下载链接，请稍后重试`;
+      }
       isUpdating.value = false;
     } else {
       updateStatus.value = '已是最新版本';
@@ -705,23 +711,61 @@ async function updateApp() {
 
 // 使用指定下载源下载
 async function downloadFromSource(source: DownloadSource) {
+  console.log('[Update] 用户点击下载源:', source.label, source.url);
+
+  updateStatus.value = `正在通过「${source.label}」下载 v${latestVersion.value}...\n即将跳转浏览器，请稍候...`;
   showUpdateDialog.value = true;
-  updateStatus.value = `正在通过「${source.label}」下载 v${latestVersion.value}...\n\n下载完成后请手动安装。`;
 
-  setTimeout(async () => {
+  // 记录已下载版本
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, latestVersion.value);
+
+  // 直接尝试打开，不延迟
+  let opened = false;
+
+  // 方法1: 使用原生 Intent 打开浏览器
+  try {
+    console.log('[Update] 尝试 PermissionChecker.openUrl...');
+    await PermissionChecker.openUrl({ url: source.url });
+    console.log('[Update] openUrl 成功');
+    opened = true;
+  } catch (e) {
+    console.log('[Update] openUrl 失败:', e);
+  }
+
+  // 方法2: 如果方法1失败，使用 window.open
+  if (!opened) {
     try {
-      await PermissionChecker.openUrl({ url: source.url });
-      console.log('[Update] 已跳转浏览器下载:', source.url);
+      console.log('[Update] 尝试 window.open...');
+      const newWindow = window.open(source.url, '_system');
+      if (newWindow) {
+        console.log('[Update] window.open 成功');
+        opened = true;
+      }
     } catch (e) {
-      console.log('[Update] openUrl 失败，使用 window.open:', e);
-      window.open(source.url, '_system');
+      console.log('[Update] window.open 失败:', e);
     }
+  }
 
+  // 方法3: 使用 location.href 跳转（兜底方案）
+  if (!opened) {
+    try {
+      console.log('[Update] 尝试 location.href...');
+      window.location.href = source.url;
+      opened = true;
+    } catch (e) {
+      console.log('[Update] location.href 失败:', e);
+    }
+  }
+
+  if (opened) {
+    updateStatus.value = `已跳转浏览器下载 v${latestVersion.value}\n\n下载完成后请在通知栏点击安装。`;
     setTimeout(() => {
       showUpdateDialog.value = false;
       showUpdateNotice.value = false;
-    }, 2000);
-  }, 1000);
+    }, 3000);
+  } else {
+    updateStatus.value = `无法自动跳转，请手动复制链接下载：\n${source.url}`;
+  }
 }
 
 
@@ -732,9 +776,40 @@ function closeUpdateDialog() {
   isUpdating.value = false;
 }
 
+// 检查小组件状态
+async function checkWidgetStatus() {
+  try {
+    const result = await UpdatePlugin.isWidgetPinned();
+    widgetPinned.value = result.isPinned;
+    widgetCount.value = result.count || 0;
+    console.log('[Widget] 状态:', result.isPinned, '数量:', result.count);
+  } catch (e) {
+    console.log('[Widget] 检查状态失败:', e);
+  }
+}
+
+// 请求添加小组件
+async function requestAddWidget() {
+  try {
+    const result = await UpdatePlugin.requestPinWidget();
+    console.log('[Widget] 请求结果:', result);
+
+    if (result.success && result.requested) {
+      alert('请点击桌面空白处长按，选择"小组件"或"Widget"，找到"倒计时提醒"添加。');
+    } else if (result.message) {
+      alert(result.message);
+    }
+  } catch (e) {
+    console.log('[Widget] 请求失败:', e);
+    alert('添加小组件失败，请手动在桌面添加。');
+  }
+}
+
 // 打开齿轮设置
 function openGearSettings() {
   showGearSettings.value = true;
+  // 打开设置时检查小组件状态
+  checkWidgetStatus();
 }
 
 // 关闭齿轮设置
@@ -1045,12 +1120,36 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-body">
+          <!-- 小组件设置 -->
+          <div class="form-group">
+            <label>桌面小组件</label>
+            <div class="widget-info">
+              <div class="widget-status">
+                <span v-if="widgetPinned" class="widget-badge widget-badge-ok">
+                  已添加 ({{ widgetCount }}个)
+                </span>
+                <span v-else class="widget-badge widget-badge-warn">未添加</span>
+              </div>
+              <button
+                class="btn-widget-action"
+                @click="requestAddWidget"
+              >
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" fill="#28C76F"/>
+                </svg>
+                <span>添加小组件</span>
+              </button>
+            </div>
+            <p class="widget-hint">在桌面显示倒计时，方便随时查看</p>
+          </div>
+
+          <!-- 版本设置 -->
           <div class="form-group">
             <label>当前版本</label>
             <div class="version-info">
               <span class="version-current">v{{ appVersion }}</span>
-              <button 
-                class="btn-check-update" 
+              <button
+                class="btn-check-update"
                 @click="manualCheckUpdate"
                 :disabled="isCheckingUpdate"
               >
@@ -1932,5 +2031,73 @@ body {
 
 .download-source-btn:active {
   transform: scale(0.98);
+}
+
+.widget-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #FAFBFC;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+}
+
+.widget-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-badge {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.widget-badge-ok {
+  background: #E8F8EE;
+  color: #28C76F;
+}
+
+.widget-badge-warn {
+  background: #FFF4E6;
+  color: #FF9500;
+}
+
+.btn-widget-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #28C76F;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-widget-action:hover {
+  background: #23b563;
+}
+
+.btn-widget-action:active {
+  transform: scale(0.98);
+}
+
+.btn-widget-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.widget-hint {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 6px;
+  margin-bottom: 0;
 }
 </style>

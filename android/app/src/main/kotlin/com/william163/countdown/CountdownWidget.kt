@@ -130,22 +130,39 @@ class CountdownWidget : AppWidgetProvider() {
     }
 
     private fun calculateCountdown(targetDateStr: String): CountdownResult {
-        if (targetDateStr.isEmpty()) {
+        // 前置空值检查
+        if (targetDateStr.isBlank()) {
             return CountdownResult(0, 0, 0, 0, false)
         }
 
         return try {
-            val dateParts = targetDateStr.split("-").map { it.toInt() }
+            val parts = targetDateStr.split("-")
+
+            // 检查日期格式是否正确（必须包含年月日三部分）
+            if (parts.size < 3) {
+                Log.w(TAG, "日期格式错误：parts.size=${parts.size}, value=$targetDateStr")
+                return CountdownResult(0, 0, 0, 0, false)
+            }
+
+            // 使用 toIntOrNull() 安全解析，防止 NumberFormatException
+            val year = parts[0].trim().toIntOrNull()
+            val month = parts[1].trim().toIntOrNull()
+            val day = parts[2].trim().toIntOrNull()
+
+            // 检查解析结果是否有效
+            if (year == null || month == null || day == null) {
+                Log.w(TAG, "日期解析失败：year=$year, month=$month, day=$day, value=$targetDateStr")
+                return CountdownResult(0, 0, 0, 0, false)
+            }
+
+            // 检查日期范围是否合理
+            if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900) {
+                Log.w(TAG, "日期范围无效：year=$year, month=$month, day=$day")
+                return CountdownResult(0, 0, 0, 0, false)
+            }
 
             val targetCal = java.util.Calendar.getInstance()
-            targetCal.set(
-                dateParts[0],
-                dateParts[1] - 1,
-                dateParts[2],
-                0,
-                0,
-                0
-            )
+            targetCal.set(year, month - 1, day, 0, 0, 0)
             targetCal.set(java.util.Calendar.MILLISECOND, 0)
 
             val now = System.currentTimeMillis()
@@ -162,7 +179,7 @@ class CountdownWidget : AppWidgetProvider() {
                 CountdownResult(days.toInt(), hours.toInt(), mins.toInt(), secs.toInt(), true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "计算倒计时失败", e)
+            Log.e(TAG, "计算倒计时失败: $targetDateStr", e)
             CountdownResult(0, 0, 0, 0, false)
         }
     }
