@@ -15,8 +15,8 @@ android {
         applicationId "com.william163.countdown"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 69
-        versionName "3.9.30"
+        versionCode 70
+        versionName "3.9.31"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -66,9 +66,6 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
-
-    implementation "androidx.glance:glance-appwidget:1.1.0"
-    implementation "androidx.glance:glance-material3:1.1.0"
 }
 
 apply from: 'capacitor.build.gradle'

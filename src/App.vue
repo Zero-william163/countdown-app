@@ -23,7 +23,6 @@ const showSettings = ref(false);
 const showGearSettings = ref(false); // 齿轮设置对话框
 const showResetConfirm = ref(false);
 const showPermissionGuide = ref(false);
-const showWidgetGuideModal = ref(false);
 const latestVersion = ref('');
 const latestApkUrl = ref('');
 const showUpdateNotice = ref(false);
@@ -183,16 +182,6 @@ async function closePermissionGuide() {
   await Preferences.set({ key: FIRST_LAUNCH_KEY, value: 'true' });
   // 关闭后重新检查权限状态
   await checkAllPermissions();
-}
-
-// 显示桌面小组件引导
-function showWidgetGuide() {
-  showWidgetGuideModal.value = true;
-}
-
-// 关闭小组件引导
-function closeWidgetGuide() {
-  showWidgetGuideModal.value = false;
 }
 
 // 打开设置
@@ -1104,18 +1093,6 @@ onUnmounted(() => {
         <!-- 滚动区域（占据剩余空间） -->
         <div class="permission-guide-scroll">
           <div class="permission-guide-actions">
-          <!-- 桌面小组件 -->
-          <div class="permission-item" @click="showWidgetGuide">
-            <div class="permission-item-info">
-              <div class="permission-item-name">
-                <span>添加桌面小组件</span>
-                <span class="perm-badge perm-badge-info">推荐</span>
-              </div>
-              <p class="permission-item-desc">设置倒计时后自动弹出添加窗口，后台被杀也不会消失</p>
-            </div>
-            <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
-          </div>
-
           <!-- 通知权限 -->
           <div class="permission-item" @click="requestNotificationPermission">
             <div class="permission-item-info">
@@ -1190,24 +1167,6 @@ onUnmounted(() => {
           <div v-if="allPermissionsGranted" style="width:100%;color:#28C76F;font-size:13px;margin-bottom:8px;font-weight:600;">✓ 所有权限已开启</div>
           <button class="btn btn-permission-secondary" @click="checkAllPermissions">刷新状态</button>
           <button class="btn btn-permission-primary" @click="closePermissionGuide">已完成设置</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 桌面小组件引导弹窗 -->
-    <div v-if="showWidgetGuideModal" class="modal-overlay" @click.self="closeWidgetGuide">
-      <div class="confirm-card" style="max-width: 360px; text-align: left;">
-        <h3 style="margin-bottom: 16px; color: #1a1a1a; text-align: center;">添加桌面小组件</h3>
-        <div style="color: #555; line-height: 1.8; font-size: 14px; margin-bottom: 20px;">
-          <p style="margin-bottom: 12px;"><b>操作步骤：</b></p>
-          <p style="margin-bottom: 8px;">1. 回到手机桌面</p>
-          <p style="margin-bottom: 8px;">2. 长按桌面空白处</p>
-          <p style="margin-bottom: 8px;">3. 点击「小组件」或「微件」</p>
-          <p style="margin-bottom: 8px;">4. 找到「倒计时提醒」</p>
-          <p>5. 拖到桌面上即可</p>
-        </div>
-        <div class="confirm-actions">
-          <button class="btn-text btn-primary-text" @click="closeWidgetGuide">我知道了</button>
         </div>
       </div>
     </div>

@@ -82,9 +82,9 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
-        <!-- 桌面小组件 - Jetpack Glance -->
+        <!-- 桌面小组件 - 传统 RemoteViews -->
         <receiver
-            android:name=".CountdownWidgetReceiver"
+            android:name=".CountdownWidget"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

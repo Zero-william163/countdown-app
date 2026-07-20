@@ -1,50 +1,71 @@
 package com.william163.countdown
 
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.glance.Button
-import androidx.glance.ButtonDefaults
-import androidx.glance.GlanceId
-import androidx.glance.GlanceModifier
-import androidx.glance.action.ActionParameters
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
-import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.provideContent
-import androidx.glance.background
-import androidx.glance.layout.Alignment
-import androidx.glance.layout.Box
-import androidx.glance.layout.Column
-import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
-import androidx.glance.layout.height
-import androidx.glance.layout.padding
-import androidx.glance.text.FontWeight
-import androidx.glance.text.Text
-import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import android.content.Intent
+import android.os.Build
+import android.util.Log
+import android.widget.RemoteViews
 import java.util.concurrent.TimeUnit
 
-class CountdownWidget : GlanceAppWidget() {
+/**
+ * 传统 RemoteViews 桌面小组件
+ * 比 Glance 兼容性更好，华为 HarmonyOS 支持更完善
+ */
+class CountdownWidget : AppWidgetProvider() {
 
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            CountdownWidgetContent(context)
+    companion object {
+        private const val TAG = "CountdownWidget"
+        private const val PREFS_NAME = "CapacitorStorage"
+        private const val SETTINGS_KEY = "countdown_settings"
+
+        /**
+         * 手动更新所有小组件
+         */
+        @JvmStatic
+        fun updateAllWidgets(context: Context) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val componentName = ComponentName(context, CountdownWidget::class.java)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
+            if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+                val widget = CountdownWidget()
+                for (appWidgetId in appWidgetIds) {
+                    try {
+                        widget.updateAppWidget(context, appWidgetManager, appWidgetId)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "手动更新小组件 $appWidgetId 失败", e)
+                    }
+                }
+            }
         }
     }
 
-    @Composable
-    private fun CountdownWidgetContent(context: Context) {
-        val prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
-        val settingsJson = prefs.getString("countdown_settings", null)
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        for (appWidgetId in appWidgetIds) {
+            try {
+                updateAppWidget(context, appWidgetManager, appWidgetId)
+            } catch (e: Exception) {
+                Log.e(TAG, "更新小组件 $appWidgetId 失败", e)
+            }
+        }
+    }
+
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        Log.d(TAG, "小组件已启用")
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        Log.d(TAG, "小组件已禁用")
+    }
+
+    fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val settingsJson = prefs.getString(SETTINGS_KEY, null)
 
         var targetName = "倒计时提醒"
         var targetDateStr = ""
@@ -57,130 +78,58 @@ class CountdownWidget : GlanceAppWidget() {
                 targetDateStr = json.optString("targetDate", "")
                 targetTimeStr = json.optString("reminderTime", "00:00")
             } catch (e: Exception) {
+                Log.e(TAG, "解析设置失败", e)
             }
         }
 
-        val (days, hours, mins, secs, isActive) = calculateCountdown(targetDateStr, targetTimeStr)
+        val result = calculateCountdown(targetDateStr)
+        val isActive = result.isActive
 
-        // 外层：深色渐变背景卡片（系统自动处理圆角）
-        Box(
-            modifier = GlanceModifier
-                .fillMaxSize()
-                .background(Color(0xFF1A1A2E))
-                .padding(12.dp)
-        ) {
-            Column(
-                modifier = GlanceModifier.fillMaxSize(),
-                verticalAlignment = Alignment.Vertical.Top
-            ) {
-                // 顶部：标题行 + 状态点
-                Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Vertical.CenterVertically
-                ) {
-                    // 状态指示点
-                    Box(
-                        modifier = GlanceModifier
-                            .padding(end = 6.dp)
-                    ) {
-                        Text(
-                            text = if (isActive) "●" else "○",
-                            style = TextStyle(
-                                color = ColorProvider(if (isActive) Color(0xFF28C76F) else Color(0xFF888888)),
-                                fontSize = 10.sp
-                            )
-                        )
-                    }
-                    Text(
-                        text = targetName,
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFFCCCCCC)),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    )
-                }
+        // 创建 RemoteViews
+        val views = RemoteViews(context.packageName, R.layout.countdown_widget)
 
-                Spacer(modifier = GlanceModifier.height(8.dp))
+        // 设置标题
+        views.setTextViewText(R.id.widget_title, targetName)
 
-                if (isActive && targetDateStr.isNotEmpty()) {
-                    // 主体：大号倒计时数字
-                    Text(
-                        text = "$days",
-                        style = TextStyle(
-                            color = ColorProvider(Color.White),
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                    Text(
-                        text = "天",
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFFAAAAAA)),
-                            fontSize = 12.sp
-                        )
-                    )
+        // 设置状态点颜色
+        val statusColor = if (isActive) 0xFF28C76F.toInt() else 0xFF888888.toInt()
+        views.setTextColor(R.id.widget_status_dot, statusColor)
+        views.setTextViewText(R.id.widget_status_dot, if (isActive) "●" else "○")
 
-                    Spacer(modifier = GlanceModifier.height(4.dp))
-
-                    // 时分秒
-                    Text(
-                        text = String.format("%02d:%02d:%02d", hours, mins, secs),
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFFCCCCCC)),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    )
-
-                    Spacer(modifier = GlanceModifier.height(8.dp))
-
-                    // 底部：提醒时间
-                    Text(
-                        text = "⏰ 每日 $targetTimeStr 提醒",
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFF888888)),
-                            fontSize = 11.sp
-                        )
-                    )
-                } else {
-                    // 未设置状态
-                    Text(
-                        text = "未设置",
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFF888888)),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-
-                    Spacer(modifier = GlanceModifier.height(4.dp))
-
-                    Text(
-                        text = "点击下方按钮设置倒计时",
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFF888888)),
-                            fontSize = 11.sp
-                        )
-                    )
-                }
-
-                Spacer(modifier = GlanceModifier.height(10.dp))
-
-                // 底部按钮：使用强调色
-                Button(
-                    text = if (isActive) "打开应用" else "立即设置",
-                    onClick = actionRunCallback<WidgetButtonCallback>(),
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = ColorProvider(Color(0xFF667EEA)),
-                        contentColor = ColorProvider(Color.White)
-                    )
-                )
-            }
+        if (isActive && targetDateStr.isNotEmpty()) {
+            // 显示倒计时
+            views.setTextViewText(R.id.widget_days, "${result.days}")
+            views.setTextViewText(R.id.widget_days_label, "天")
+            views.setTextViewText(R.id.widget_time, String.format("%02d:%02d:%02d", result.hours, result.mins, result.secs))
+            views.setTextViewText(R.id.widget_reminder, "⏰ 每日 ${targetTimeStr} 提醒")
+            views.setTextViewText(R.id.widget_button, "打开应用")
+        } else {
+            // 未设置状态
+            views.setTextViewText(R.id.widget_days, "未设置")
+            views.setTextViewText(R.id.widget_days_label, "")
+            views.setTextViewText(R.id.widget_time, "")
+            views.setTextViewText(R.id.widget_reminder, "点击设置倒计时")
+            views.setTextViewText(R.id.widget_button, "立即设置")
         }
+
+        // 点击打开应用
+        val intent = Intent(context, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getActivity(context, appWidgetId, intent, flags)
+        views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+        views.setOnClickPendingIntent(R.id.widget_button, pendingIntent)
+
+        // 更新小组件
+        appWidgetManager.updateAppWidget(appWidgetId, views)
+        Log.d(TAG, "小组件 $appWidgetId 已更新")
     }
 
-    private fun calculateCountdown(targetDateStr: String, @Suppress("UNUSED_PARAMETER") targetTimeStr: String): CountdownResult {
+    private fun calculateCountdown(targetDateStr: String): CountdownResult {
         if (targetDateStr.isEmpty()) {
             return CountdownResult(0, 0, 0, 0, false)
         }
@@ -213,6 +162,7 @@ class CountdownWidget : GlanceAppWidget() {
                 CountdownResult(days.toInt(), hours.toInt(), mins.toInt(), secs.toInt(), true)
             }
         } catch (e: Exception) {
+            Log.e(TAG, "计算倒计时失败", e)
             CountdownResult(0, 0, 0, 0, false)
         }
     }
@@ -224,14 +174,4 @@ class CountdownWidget : GlanceAppWidget() {
         val secs: Int,
         val isActive: Boolean
     )
-}
-
-class WidgetButtonCallback : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        withContext(Dispatchers.IO) {
-            val intent = android.content.Intent(context, MainActivity::class.java)
-            intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
-            context.startActivity(intent)
-        }
-    }
 }
