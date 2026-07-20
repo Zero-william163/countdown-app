@@ -1028,6 +1028,7 @@ onUnmounted(() => {
             <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
           </svg>
           <span>所有权限已开启</span>
+          <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
         </div>
         <div v-else class="permission-status warning" @click="showPermissionGuide = true">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1560,6 +1561,24 @@ body {
 
 .permission-status.warning {
   color: #FF9500;
+}
+
+.check-permission-btn {
+  margin-left: 12px;
+  padding: 4px 12px;
+  border: 1px solid #28C76F;
+  border-radius: 12px;
+  background: rgba(40, 199, 111, 0.1);
+  color: #28C76F;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.check-permission-btn:active {
+  background: rgba(40, 199, 111, 0.2);
+  transform: scale(0.95);
 }
 
 .reset-btn {
