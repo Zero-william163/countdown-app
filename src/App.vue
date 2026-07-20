@@ -627,19 +627,20 @@ interface DownloadSource {
 function getDownloadUrls(version: string, baseUrl: string): DownloadSource[] {
   const urls: DownloadSource[] = [];
   
-  // 1. 国内镜像优先（ghproxy.com）- 解决 GitHub 直连卡住问题
-  const ghproxyUrl = baseUrl.replace(
-    'https://github.com/',
-    'https://ghproxy.com/https://github.com/'
-  );
-  urls.push({ label: '国内镜像（推荐）', url: ghproxyUrl });
-  
-  // 2. jsDelivr CDN（稳定可靠）
-  const jsdelivrUrl = `https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@v${version}/countdown-app-v${version}.apk`;
-  urls.push({ label: 'jsDelivr CDN', url: jsdelivrUrl });
-  
-  // 3. GitHub 官方源（备用）
+  // 1. GitHub 官方源（最可靠，但国内可能慢）
   urls.push({ label: 'GitHub 官方', url: baseUrl });
+  
+  // 2. gh-proxy 镜像（GitHub Release 代理加速）
+  // 格式：https://gh-proxy.com/ + 原始URL
+  const ghProxyUrl = `https://gh-proxy.com/${baseUrl}`;
+  urls.push({ label: '国内镜像 (gh-proxy)', url: ghProxyUrl });
+  
+  // 3. ghfast 镜像（另一个 GitHub 加速服务）
+  const ghfastUrl = baseUrl.replace(
+    'https://github.com/',
+    'https://ghfast.top/https://github.com/'
+  );
+  urls.push({ label: '国内镜像 (ghfast)', url: ghfastUrl });
   
   return urls;
 }

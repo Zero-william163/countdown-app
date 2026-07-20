@@ -25,8 +25,9 @@
 
         <TextView
             android:id="@+id/widget_title"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:text="倒计时提醒"
             android:textColor="#CCCCCC"
             android:textSize="13sp"
@@ -73,7 +74,8 @@
         android:textColor="#888888"
         android:textSize="11sp" />
 
-    <View
+    <!-- 弹性空间 - 使用 Space 代替 View，兼容性更好 -->
+    <Space
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
