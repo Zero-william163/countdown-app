@@ -13,16 +13,13 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 传统 RemoteViews 桌面小组件
- * 纯传统方案，不依赖 Glance，兼容所有系统包括华为 HarmonyOS
+ * 纯传统方案，兼容 Android 7.0+ (API 24+)
  */
 class CountdownWidget : AppWidgetProvider() {
 
     companion object {
         private const val TAG = "CountdownWidget"
 
-        /**
-         * 手动更新所有小组件
-         */
         @JvmStatic
         fun updateAllWidgets(context: Context) {
             try {
@@ -51,25 +48,8 @@ class CountdownWidget : AppWidgetProvider() {
                 updateAppWidget(context, appWidgetManager, appWidgetId)
             } catch (e: Exception) {
                 Log.e(TAG, "更新小组件 $appWidgetId 失败", e)
-                // 尝试渲染一个最简单的默认视图，防止 "Problem loading widget"
-                try {
-                    val views = RemoteViews(context.packageName, R.layout.countdown_widget)
-                    appWidgetManager.updateAppWidget(appWidgetId, views)
-                } catch (e2: Exception) {
-                    Log.e(TAG, "渲染默认视图也失败", e2)
-                }
             }
         }
-    }
-
-    override fun onEnabled(context: Context) {
-        super.onEnabled(context)
-        Log.d(TAG, "小组件已启用")
-    }
-
-    override fun onDisabled(context: Context) {
-        super.onDisabled(context)
-        Log.d(TAG, "小组件已禁用")
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -81,54 +61,41 @@ class CountdownWidget : AppWidgetProvider() {
     }
 
     fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        // 读取设置 - 尝试多种 SharedPreferences 名称
-        var targetName = "倒计时提醒"
-        var targetDateStr = ""
-        var targetTimeStr = "00:00"
+        // 创建最基础的 RemoteViews - 即使后续全部失败，也能显示默认布局
+        val views = RemoteViews(context.packageName, R.layout.countdown_widget)
 
         try {
-            val prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
-            val settingsJson = prefs.getString("countdown_settings", null)
+            // 读取设置
+            var targetName = "倒计时提醒"
+            var targetDateStr = ""
+            var targetTimeStr = "00:00"
 
-            if (settingsJson != null) {
-                try {
+            try {
+                val prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE)
+                val settingsJson = prefs.getString("countdown_settings", null)
+                if (settingsJson != null) {
                     val json = org.json.JSONObject(settingsJson)
                     targetName = json.optString("targetName", "倒计时提醒")
                     targetDateStr = json.optString("targetDate", "")
                     targetTimeStr = json.optString("reminderTime", "00:00")
-                } catch (e: Exception) {
-                    Log.e(TAG, "解析设置 JSON 失败", e)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "读取设置失败", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "读取 SharedPreferences 失败", e)
-        }
 
-        // 安全计算倒计时
-        val result = calculateCountdown(targetDateStr)
-        val isActive = result.isActive
+            // 安全计算倒计时
+            val result = calculateCountdown(targetDateStr)
 
-        // 创建 RemoteViews
-        val views = RemoteViews(context.packageName, R.layout.countdown_widget)
-
-        try {
-            // 设置标题
+            // 设置文本
             views.setTextViewText(R.id.widget_title, targetName)
 
-            // 设置状态点
-            val statusColor = if (isActive) 0xFF28C76F.toInt() else 0xFF888888.toInt()
-            views.setTextColor(R.id.widget_status_dot, statusColor)
-            views.setTextViewText(R.id.widget_status_dot, if (isActive) "●" else "○")
-
-            if (isActive && targetDateStr.isNotEmpty()) {
-                // 显示倒计时
+            if (result.isActive) {
                 views.setTextViewText(R.id.widget_days, "${result.days}")
                 views.setTextViewText(R.id.widget_days_label, "天")
                 views.setTextViewText(R.id.widget_time, String.format("%02d:%02d:%02d", result.hours, result.mins, result.secs))
-                views.setTextViewText(R.id.widget_reminder, "⏰ 每日 ${targetTimeStr} 提醒")
+                views.setTextViewText(R.id.widget_reminder, "每日 ${targetTimeStr} 提醒")
                 views.setTextViewText(R.id.widget_button, "打开应用")
             } else {
-                // 未设置状态
                 views.setTextViewText(R.id.widget_days, "未设置")
                 views.setTextViewText(R.id.widget_days_label, "")
                 views.setTextViewText(R.id.widget_time, "")
@@ -148,46 +115,27 @@ class CountdownWidget : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
             views.setOnClickPendingIntent(R.id.widget_button, pendingIntent)
         } catch (e: Exception) {
-            Log.e(TAG, "设置 RemoteViews 内容失败", e)
+            Log.e(TAG, "设置小组件内容失败", e)
         }
 
-        // 更新小组件
+        // 最后一定要调用 updateAppWidget，确保显示内容
         appWidgetManager.updateAppWidget(appWidgetId, views)
-        Log.d(TAG, "小组件 $appWidgetId 已更新")
     }
 
-    /**
-     * 安全计算倒计时 - 防止任何异常导致小组件崩溃
-     */
     private fun calculateCountdown(targetDateStr: String): CountdownResult {
-        // 前置空值检查
         if (targetDateStr.isBlank()) {
             return CountdownResult(0, 0, 0, 0, false)
         }
 
         return try {
             val parts = targetDateStr.split("-")
+            if (parts.size < 3) return CountdownResult(0, 0, 0, 0, false)
 
-            // 检查日期格式是否正确（必须包含年月日三部分）
-            if (parts.size < 3) {
-                Log.w(TAG, "日期格式错误：parts.size=${parts.size}, value=$targetDateStr")
-                return CountdownResult(0, 0, 0, 0, false)
-            }
+            val year = parts[0].trim().toIntOrNull() ?: return CountdownResult(0, 0, 0, 0, false)
+            val month = parts[1].trim().toIntOrNull() ?: return CountdownResult(0, 0, 0, 0, false)
+            val day = parts[2].trim().toIntOrNull() ?: return CountdownResult(0, 0, 0, 0, false)
 
-            // 使用 toIntOrNull() 安全解析，防止 NumberFormatException
-            val year = parts[0].trim().toIntOrNull()
-            val month = parts[1].trim().toIntOrNull()
-            val day = parts[2].trim().toIntOrNull()
-
-            // 检查解析结果是否有效
-            if (year == null || month == null || day == null) {
-                Log.w(TAG, "日期解析失败：year=$year, month=$month, day=$day, value=$targetDateStr")
-                return CountdownResult(0, 0, 0, 0, false)
-            }
-
-            // 检查日期范围是否合理
             if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900) {
-                Log.w(TAG, "日期范围无效：year=$year, month=$month, day=$day")
                 return CountdownResult(0, 0, 0, 0, false)
             }
 

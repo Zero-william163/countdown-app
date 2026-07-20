@@ -85,6 +85,7 @@
         <!-- 桌面小组件 - 传统 RemoteViews -->
         <receiver
             android:name=".CountdownWidget"
+            android:label="@string/widget_description"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
