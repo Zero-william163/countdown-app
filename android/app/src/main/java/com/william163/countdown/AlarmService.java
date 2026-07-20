@@ -185,9 +185,11 @@ public class AlarmService extends Service {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(android.R.drawable.ic_media_pause, "关闭闹钟", stopPendingIntent);
 
-        // 全屏意图
-        Intent fullScreenIntent = new Intent(this, MainActivity.class);
-        fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // 全屏意图 - 使用专门的响铃界面
+        Intent fullScreenIntent = new Intent(this, AlarmRingActivity.class);
+        fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
+        fullScreenIntent.putExtra("title", title);
+        fullScreenIntent.putExtra("content", content);
         PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
             this, 0, fullScreenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE

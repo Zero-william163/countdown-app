@@ -41,6 +41,17 @@
 
         </activity>
 
+        <!-- 闹钟响铃全屏界面 -->
+        <activity
+            android:name=".AlarmRingActivity"
+            android:enabled="true"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true">
+        </activity>
+
         <!-- 开机启动接收器 - 用于重启后恢复闹钟 -->
         <receiver
             android:name=".BootReceiver"
