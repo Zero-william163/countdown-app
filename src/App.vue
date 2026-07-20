@@ -627,6 +627,32 @@ async function checkForUpdate(manualUrl?: string) {
   }
 }
 
+// 获取下载链接列表（包含多个加速源）
+interface DownloadSource {
+  label: string;
+  url: string;
+}
+
+function getDownloadUrls(version: string, baseUrl: string): DownloadSource[] {
+  const urls: DownloadSource[] = [];
+  
+  // 1. 国内镜像优先（ghproxy.com）- 解决 GitHub 直连卡住问题
+  const ghproxyUrl = baseUrl.replace(
+    'https://github.com/',
+    'https://ghproxy.com/https://github.com/'
+  );
+  urls.push({ label: '国内镜像（推荐）', url: ghproxyUrl });
+  
+  // 2. jsDelivr CDN（稳定可靠）
+  const jsdelivrUrl = `https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@v${version}/countdown-app-v${version}.apk`;
+  urls.push({ label: 'jsDelivr CDN', url: jsdelivrUrl });
+  
+  // 3. GitHub 官方源（备用）
+  urls.push({ label: 'GitHub 官方', url: baseUrl });
+  
+  return urls;
+}
+
 // 手动检查更新（设置中调用）
 async function manualCheckUpdate() {
   if (isCheckingUpdate.value) return;
@@ -656,30 +682,52 @@ async function manualCheckUpdate() {
   }
 }
 
-// 更新应用 - 直接跳转浏览器下载（避免华为等系统安全拦截）
+// 更新应用 - 支持多个下载源（解决国内网络卡住问题）
 async function updateApp() {
-  if (!latestApkUrl.value) {
+  if (!latestApkUrl.value || !latestVersion.value) {
     alert('下载链接无效');
     return;
   }
 
-  // 【安全方案】直接跳转浏览器下载，避免触发系统安全拦截
-  // 华为等国产系统对应用内直接下载APK会触发安全校验死循环
+  // 获取多个下载源（国内镜像、CDN、官方）
+  const downloadSources = getDownloadUrls(latestVersion.value, latestApkUrl.value);
+  
+  // 默认使用第一个（国内镜像）
+  const primaryUrl = downloadSources[0].url;
+  
   showUpdateDialog.value = true;
   updateStatus.value = `即将跳转浏览器下载 v${latestVersion.value}...\n\n下载完成后请手动安装。`;
 
   setTimeout(async () => {
     try {
-      // 尝试使用系统浏览器打开
-      await PermissionChecker.openUrl({ url: latestApkUrl.value });
-      console.log('[Update] 已跳转浏览器下载:', latestApkUrl.value);
+      await PermissionChecker.openUrl({ url: primaryUrl });
+      console.log('[Update] 已跳转浏览器下载:', primaryUrl);
     } catch (e) {
-      // 降级：使用 window.open
       console.log('[Update] openUrl 失败，使用 window.open:', e);
-      window.open(latestApkUrl.value, '_system');
+      window.open(primaryUrl, '_system');
     }
 
-    // 关闭对话框
+    setTimeout(() => {
+      showUpdateDialog.value = false;
+      showUpdateNotice.value = false;
+    }, 2000);
+  }, 1000);
+}
+
+// 使用指定下载源下载
+async function downloadFromSource(source: DownloadSource) {
+  showUpdateDialog.value = true;
+  updateStatus.value = `正在通过「${source.label}」下载 v${latestVersion.value}...\n\n下载完成后请手动安装。`;
+
+  setTimeout(async () => {
+    try {
+      await PermissionChecker.openUrl({ url: source.url });
+      console.log('[Update] 已跳转浏览器下载:', source.url);
+    } catch (e) {
+      console.log('[Update] openUrl 失败，使用 window.open:', e);
+      window.open(source.url, '_system');
+    }
+
     setTimeout(() => {
       showUpdateDialog.value = false;
       showUpdateNotice.value = false;
@@ -1166,12 +1214,29 @@ onUnmounted(() => {
 
     <!-- 更新对话框 -->
     <div v-if="showUpdateDialog" class="modal-overlay">
-      <div class="confirm-card">
+      <div class="confirm-card" style="max-width: 380px;">
         <h3 style="margin-bottom: 12px; color: #1a1a1a;">应用更新</h3>
         <p style="margin-bottom: 16px; color: #666; text-align: center; line-height: 1.6;">{{ updateStatus }}</p>
+        
+        <!-- 显示多个下载源（当发现新版本时） -->
+        <div v-if="latestVersion && compareVersions(latestVersion, appVersion) && latestApkUrl" style="margin-bottom: 16px;">
+          <p style="font-size: 12px; color: #999; margin-bottom: 8px; text-align: left;">选择下载方式：</p>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button 
+              v-for="(source, index) in getDownloadUrls(latestVersion, latestApkUrl)" 
+              :key="index"
+              class="download-source-btn"
+              @click="downloadFromSource(source)"
+              :style="{ borderLeft: index === 0 ? '4px solid #28C76F' : '4px solid #ccc' }"
+            >
+              <span style="font-weight: 600; color: #333;">{{ source.label }}</span>
+              <span v-if="index === 0" style="font-size: 11px; color: #28C76F; margin-left: 6px;">推荐</span>
+            </button>
+          </div>
+        </div>
+        
         <div class="confirm-actions">
           <button class="btn-text" @click="closeUpdateDialog">关闭</button>
-          <button v-if="latestVersion && compareVersions(latestVersion, appVersion)" class="btn-text btn-primary-text" @click="updateApp">开始下载</button>
         </div>
       </div>
     </div>
@@ -1886,5 +1951,27 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.download-source-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.download-source-btn:hover {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+}
+
+.download-source-btn:active {
+  transform: scale(0.98);
 }
 </style>
