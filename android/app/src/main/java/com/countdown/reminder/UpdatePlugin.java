@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
+import android.content.ComponentName;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.util.Log;
@@ -184,6 +185,26 @@ public class UpdatePlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "请求安装权限失败", e);
             call.reject("请求安装权限失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新桌面小组件
+     * 小组件会从 SharedPreferences 读取最新的倒计时数据
+     */
+    @PluginMethod
+    public void updateWidget(PluginCall call) {
+        try {
+            Intent updateIntent = new Intent("android.appwidget.action.APPWIDGET_UPDATE");
+            updateIntent.setComponent(new ComponentName(getContext(), CountdownWidgetReceiver.class));
+            getContext().sendBroadcast(updateIntent);
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "更新小组件失败", e);
+            call.reject("更新小组件失败: " + e.getMessage());
         }
     }
 

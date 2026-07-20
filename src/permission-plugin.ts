@@ -33,6 +33,7 @@ export interface UpdatePluginInterface {
   checkInstallPermission(): Promise<{ granted: boolean }>;
   requestInstallPermission(): Promise<void>;
   getAppVersion(): Promise<{ version: string; versionCode: number; success: boolean }>;
+  updateWidget(): Promise<{ success: boolean }>;
 }
 
 export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin', {
@@ -41,6 +42,7 @@ export const UpdatePlugin = registerPlugin<UpdatePluginInterface>('UpdatePlugin'
     checkInstallPermission: () => Promise.resolve({ granted: true }),
     requestInstallPermission: () => Promise.resolve(),
     getAppVersion: () => Promise.resolve({ version: '0.0.0', versionCode: 0, success: false }),
+    updateWidget: () => Promise.resolve({ success: false }),
   },
 });
 
@@ -61,27 +63,5 @@ export const AlarmPlugin = registerPlugin<AlarmPluginInterface>('AlarmPlugin', {
     scheduleDailyAlarms: () => Promise.resolve({ success: true, count: 0 }),
     cancelAllAlarms: () => Promise.resolve({ success: true, count: 0 }),
     stopAlarm: () => Promise.resolve({ success: true }),
-  },
-});
-
-export interface FloatingWindowPluginInterface {
-  checkOverlayPermission(): Promise<{ granted: boolean }>;
-  openOverlaySettings(): Promise<void>;
-  showFloatingWindow(options: {
-    targetName: string;
-    targetDate: string;
-    targetTime: string;
-  }): Promise<{ success: boolean }>;
-  hideFloatingWindow(): Promise<{ success: boolean }>;
-  updateWidget(): Promise<{ success: boolean }>;
-}
-
-export const FloatingWindowPlugin = registerPlugin<FloatingWindowPluginInterface>('FloatingWindowPlugin', {
-  web: {
-    checkOverlayPermission: () => Promise.resolve({ granted: false }),
-    openOverlaySettings: () => Promise.resolve(),
-    showFloatingWindow: () => Promise.resolve({ success: false }),
-    hideFloatingWindow: () => Promise.resolve({ success: false }),
-    updateWidget: () => Promise.resolve({ success: false }),
   },
 });

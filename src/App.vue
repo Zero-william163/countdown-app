@@ -4,7 +4,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
 import { App } from '@capacitor/app';
 import { CapacitorHttp } from '@capacitor/core';
-import { PermissionChecker, UpdatePlugin, AlarmPlugin, FloatingWindowPlugin } from './permission-plugin';
+import { PermissionChecker, UpdatePlugin, AlarmPlugin } from './permission-plugin';
 
 const STORAGE_KEY = 'countdown_settings';
 const FIRST_LAUNCH_KEY = 'has_seen_permission_guide';
@@ -29,10 +29,8 @@ const showUpdateNotice = ref(false);
 const isUpdating = ref(false);
 const updateStatus = ref('');
 const showUpdateDialog = ref(false);
-const hasOverlayPermission = ref(false); // 悬浮窗权限
 const hasAutoStartPermission = ref(false); // 自启动权限
-const isFloatingWindowShown = ref(false); // 悬浮窗是否正在显示
-const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
+  const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
 const isCheckingUpdate = ref(false); // 是否正在检查更新
 
 const countdown = ref({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -102,15 +100,6 @@ async function checkAllPermissions() {
       console.log('检查电池优化失败:', e);
     }
 
-    // 检查悬浮窗权限
-    try {
-      const overlayResult = await FloatingWindowPlugin.checkOverlayPermission();
-      hasOverlayPermission.value = overlayResult.granted;
-    } catch (e) {
-      console.log('检查悬浮窗权限失败:', e);
-      hasOverlayPermission.value = false;
-    }
-
     // 检查自启动权限（国产手机无统一 API，优先读取本地确认标记）
     try {
       const { value: autoStartConfirmed } = await Preferences.get({ key: 'autostart_confirmed' });
@@ -131,8 +120,7 @@ async function checkAllPermissions() {
 // 所有权限是否都已开启
 const allPermissionsGranted = computed(() => {
   return hasPermission.value && hasExactAlarmPermission.value &&
-         hasBatteryOptimization.value && hasOverlayPermission.value &&
-         hasAutoStartPermission.value;
+         hasBatteryOptimization.value && hasAutoStartPermission.value;
 });
 
 // 打开精确闹钟设置
@@ -187,69 +175,6 @@ async function openAppSettingsPage() {
   }
 }
 
-// 打开悬浮窗权限设置
-async function openOverlaySettings() {
-  try {
-    await FloatingWindowPlugin.openOverlaySettings();
-  } catch (e) {
-    console.error('打开悬浮窗设置失败:', e);
-    try {
-      await PermissionChecker.openAppSettings();
-    } catch (ee) {
-      console.log('打开应用设置失败:', ee);
-    }
-  }
-}
-
-// 显示悬浮窗倒计时
-async function showFloatingCountdown() {
-  if (!isAlarmSet.value) {
-    alert('请先设置倒计时');
-    return;
-  }
-  // 先检查权限
-  try {
-    const perm = await FloatingWindowPlugin.checkOverlayPermission();
-    if (!perm.granted) {
-      alert('需要"悬浮窗"权限才能在桌面显示倒计时，即将跳转设置页面开启');
-      await FloatingWindowPlugin.openOverlaySettings();
-      return;
-    }
-  } catch (e) {
-    console.log('检查悬浮窗权限失败:', e);
-  }
-
-  try {
-    await FloatingWindowPlugin.showFloatingWindow({
-      targetName: targetName.value,
-      targetDate: targetDate.value,
-      targetTime: '00:00',
-    });
-    isFloatingWindowShown.value = true;
-    console.log('悬浮窗已显示');
-  } catch (e: any) {
-    console.error('显示悬浮窗失败:', e);
-    if (e && e.message && e.message.includes('NO_OVERLAY_PERMISSION')) {
-      alert('需要"悬浮窗"权限才能在桌面显示倒计时，即将跳转设置页面开启');
-      await FloatingWindowPlugin.openOverlaySettings();
-    } else {
-      alert('显示悬浮窗失败: ' + (e?.message || '未知错误'));
-    }
-  }
-}
-
-// 隐藏悬浮窗
-async function hideFloatingCountdown() {
-  try {
-    await FloatingWindowPlugin.hideFloatingWindow();
-    isFloatingWindowShown.value = false;
-    console.log('悬浮窗已隐藏');
-  } catch (e) {
-    console.error('隐藏悬浮窗失败:', e);
-    isFloatingWindowShown.value = false;
-  }
-}
-
 // 关闭权限引导弹窗
 async function closePermissionGuide() {
   showPermissionGuide.value = false;
@@ -293,26 +218,12 @@ async function saveSettings() {
 
   isAlarmSet.value = true;
   showSettings.value = false;
-  updateCountdown();
+  await updateCountdown();
   await scheduleDailyNotifications();
-
-  try {
-    const overlayPerm = await FloatingWindowPlugin.checkOverlayPermission();
-    if (overlayPerm.granted) {
-      await FloatingWindowPlugin.showFloatingWindow({
-        targetName: targetName.value,
-        targetDate: targetDate.value,
-        targetTime: '00:00',
-      });
-      isFloatingWindowShown.value = true;
-    }
-  } catch (e) {
-    console.log('自动显示悬浮窗失败:', e);
-  }
 
   // 更新桌面小组件
   try {
-    await FloatingWindowPlugin.updateWidget();
+    await UpdatePlugin.updateWidget();
     console.log('[Widget] 小组件已更新');
   } catch (e) {
     console.log('[Widget] 更新小组件失败:', e);
@@ -329,7 +240,7 @@ async function loadSavedSettings() {
       targetDate.value = settings.targetDate || '';
       reminderTime.value = settings.reminderTime || '09:00';
       isAlarmSet.value = true;
-      updateCountdown();
+      await updateCountdown();
       await scheduleDailyNotifications();
     } else {
       isAlarmSet.value = false;
@@ -490,14 +401,6 @@ async function scheduleLocalNotificationsFallback() {
 // 取消提醒
 async function cancelReminder() {
   try {
-    // 隐藏悬浮窗
-    try {
-      await FloatingWindowPlugin.hideFloatingWindow();
-      isFloatingWindowShown.value = false;
-    } catch (e) {
-      console.log('隐藏悬浮窗:', e);
-    }
-
     // 取消原生闹钟
     try {
       await AlarmPlugin.cancelAllAlarms();
@@ -880,19 +783,9 @@ onMounted(async () => {
   try {
     App.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
-        // 从设置返回时立即刷新权限状态
         setTimeout(async () => {
           try {
-            // 重新检查所有系统权限（通知、精确闹钟、电池优化、悬浮窗）
             await checkAllPermissions();
-            // 单独检查悬浮窗权限
-            try {
-              const overlayResult = await FloatingWindowPlugin.checkOverlayPermission();
-              hasOverlayPermission.value = overlayResult.granted;
-            } catch (e) {
-              console.log('检查悬浮窗权限失败:', e);
-            }
-            // 自启动权限：如果用户刚从设置返回且之前未开启，提示确认
             if (autoStartSettingsOpened.value && !hasAutoStartPermission.value) {
               autoStartSettingsOpened.value = false;
               const confirmed = confirm('已在系统设置中开启自启动权限？\n\n点击"确定"后将状态标记为已开启。');
@@ -905,9 +798,8 @@ onMounted(async () => {
             } else {
               autoStartSettingsOpened.value = false;
             }
-            // 如果所有权限都开启，自动关闭引导弹窗
             if (showPermissionGuide.value && hasPermission.value && hasExactAlarmPermission.value &&
-                hasBatteryOptimization.value && hasOverlayPermission.value && hasAutoStartPermission.value) {
+                hasBatteryOptimization.value && hasAutoStartPermission.value) {
               showPermissionGuide.value = false;
               await Preferences.set({ key: FIRST_LAUNCH_KEY, value: 'true' });
             }
@@ -1029,15 +921,6 @@ onUnmounted(() => {
           <path d="M12 5V1L7 6L12 11V7C15.31 7 18 9.69 18 13C18 16.31 15.31 19 12 19C8.69 19 6 16.31 6 13H4C4 17.42 7.58 21 12 21C16.42 21 20 17.42 20 13C20 8.58 16.42 5 12 5Z" fill="#666"/>
         </svg>
         <span>重新设置</span>
-      </button>
-
-      <!-- 悬浮窗控制按钮 -->
-      <button class="float-control-btn" v-if="isAlarmSet" @click="isFloatingWindowShown ? hideFloatingCountdown() : showFloatingCountdown()">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path v-if="!isFloatingWindowShown" d="M3 5H21V17H3V5ZM3 3C1.9 3 1 3.9 1 5V17C1 18.1 1.9 19 3 19H21C22.1 19 23 18.1 23 17V5C23 3.9 22.1 3 21 3H3ZM9 21H15V23H9V21Z" fill="white"/>
-          <path v-else d="M3 5H21V17H3V5ZM9 21H15V23H9V21ZM7 12L11 8L13 10L17 6V9L13 13L11 11L7 15V12Z" fill="white"/>
-        </svg>
-        <span>{{ isFloatingWindowShown ? '隐藏悬浮窗' : '显示悬浮窗' }}</span>
       </button>
 
       <!-- 暂无闹钟状态 -->
@@ -1227,20 +1110,6 @@ onUnmounted(() => {
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
-          <!-- 悬浮窗权限 -->
-          <div class="permission-item" @click="openOverlaySettings">
-            <div class="permission-item-info">
-              <div class="permission-item-name">
-                <span>悬浮窗权限</span>
-                <span v-if="hasOverlayPermission" class="perm-badge perm-badge-ok">已开启</span>
-                <span v-else class="perm-badge perm-badge-warn">未开启</span>
-              </div>
-              <p class="permission-item-desc">在桌面显示倒计时悬浮窗，类似华为闹钟</p>
-            </div>
-            <svg v-if="hasOverlayPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
-            <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
-          </div>
-
           <!-- 自启动权限 -->
           <div class="permission-item" @click="openAutoStartSettings">
             <div class="permission-item-info">
@@ -1249,7 +1118,7 @@ onUnmounted(() => {
                 <span v-if="hasAutoStartPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">杀死后台后仍能显示悬浮窗和提醒闹钟（跳转后请手动确认）</p>
+              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟（跳转后请手动确认）</p>
             </div>
             <svg v-if="hasAutoStartPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
