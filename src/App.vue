@@ -38,6 +38,14 @@ const isCheckingUpdate = ref(false); // 是否正在检查更新
 const widgetPinned = ref(false); // 小组件是否已添加到桌面
 const widgetCount = ref(0); // 已添加的小组件数量
 
+// 权限检查状态
+const isCheckingPermissions = ref(false);
+const permissionCheckResult = ref<{
+  checking: boolean;
+  allOk: boolean;
+  missing: string[];
+} | null>(null);
+
 const countdown = ref({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 const totalRemaining = ref('');
 
@@ -77,6 +85,9 @@ async function checkFirstLaunch() {
 
 // 检查所有权限（更新状态显示用）
 async function checkAllPermissions() {
+  isCheckingPermissions.value = true;
+  permissionCheckResult.value = { checking: true, allOk: false, missing: [] };
+
   try {
     // 通知权限 - 优先使用原生检查，更准确
     try {
@@ -117,8 +128,28 @@ async function checkAllPermissions() {
     } catch (e) {
       console.log('检查自启动权限失败:', e);
     }
+
+    // 收集未开启的权限
+    const missing: string[] = [];
+    if (!hasPermission.value) missing.push('通知权限');
+    if (!hasExactAlarmPermission.value) missing.push('精确闹钟权限');
+    if (!hasBatteryOptimization.value) missing.push('电池优化');
+    if (!hasAutoStartPermission.value) missing.push('自启动权限');
+
+    permissionCheckResult.value = {
+      checking: false,
+      allOk: missing.length === 0,
+      missing
+    };
   } catch (error) {
     console.error('检查权限失败:', error);
+    permissionCheckResult.value = {
+      checking: false,
+      allOk: false,
+      missing: ['检查失败，请重试']
+    };
+  } finally {
+    isCheckingPermissions.value = false;
   }
 }
 
@@ -896,6 +927,35 @@ function closeGearSettings() {
   showGearSettings.value = false;
 }
 
+// 根据权限名称跳转到对应设置页面
+async function openPermissionSetting(permName: string) {
+  try {
+    switch (permName) {
+      case '通知权限':
+        await PermissionChecker.requestNotificationPermission();
+        break;
+      case '精确闹钟权限':
+        await PermissionChecker.openAlarmSettings();
+        break;
+      case '电池优化':
+        await PermissionChecker.openBatterySettings();
+        break;
+      case '自启动权限':
+        await PermissionChecker.openAutoStartSettings();
+        break;
+      default:
+        await PermissionChecker.openAppSettings();
+    }
+  } catch (e) {
+    console.error('打开设置失败:', e);
+    try {
+      await PermissionChecker.openAppSettings();
+    } catch (ee) {
+      console.error('打开应用设置失败:', ee);
+    }
+  }
+}
+
 // 最小日期
 const minDate = computed(() => {
   const today = new Date();
@@ -1277,16 +1337,31 @@ onUnmounted(() => {
             <label>权限状态</label>
             <div class="permission-check-info">
               <div class="permission-status-mini">
-                <span v-if="allPermissionsGranted" class="perm-ok">✓ 已全部开启</span>
+                <span v-if="isCheckingPermissions" class="perm-checking">正在检查中...</span>
+                <span v-else-if="permissionCheckResult && permissionCheckResult.allOk" class="perm-ok">✓ 所有权限已开启</span>
+                <span v-else-if="permissionCheckResult && !permissionCheckResult.allOk" class="perm-warn">! {{ permissionCheckResult.missing.length }} 项未开启</span>
+                <span v-else-if="allPermissionsGranted" class="perm-ok">✓ 已全部开启</span>
                 <span v-else class="perm-warn">! 部分未开启</span>
               </div>
-              <button class="btn-check-permission" @click="checkAllPermissions">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <button class="btn-check-permission" @click="checkAllPermissions" :disabled="isCheckingPermissions">
+                <svg v-if="!isCheckingPermissions" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V11H13V17ZM13 9H11V7H13V9Z" fill="#667EEA"/>
                 </svg>
-                <span>检查权限</span>
+                <span>{{ isCheckingPermissions ? '检查中...' : '检查权限' }}</span>
               </button>
             </div>
+
+            <!-- 未开启权限列表 -->
+            <div v-if="permissionCheckResult && !permissionCheckResult.allOk && permissionCheckResult.missing.length > 0" class="permission-missing-list">
+              <p class="missing-title">以下权限需要开启：</p>
+              <div class="missing-items">
+                <div v-for="(perm, idx) in permissionCheckResult.missing" :key="idx" class="missing-item">
+                  <span>{{ perm }}</span>
+                  <button class="btn-fix-perm" @click="openPermissionSetting(perm)">去设置</button>
+                </div>
+              </div>
+            </div>
+
             <p class="permission-hint">确保通知、闹钟、电池优化、自启动权限已开启</p>
           </div>
         </div>
@@ -2036,6 +2111,65 @@ body {
   color: #9CA3AF;
   margin-top: 8px;
   text-align: left;
+}
+
+/* 检查中状态 */
+.perm-checking {
+  color: #2B7FFF;
+}
+
+/* 未开启权限列表 */
+.permission-missing-list {
+  margin-top: 12px;
+  padding: 12px;
+  background: #FFF5F5;
+  border-radius: 10px;
+  border: 1px solid #FFCDD2;
+}
+
+.missing-title {
+  font-size: 13px;
+  color: #D32F2F;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+.missing-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.missing-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #FFEBEE;
+}
+
+.missing-item span {
+  font-size: 14px;
+  color: #333;
+}
+
+.btn-fix-perm {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #FF6B6B, #EE5A5A);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn-fix-perm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(238, 90, 90, 0.3);
 }
 
 .modal-footer {
