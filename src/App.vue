@@ -887,6 +887,8 @@ function openGearSettings() {
   showGearSettings.value = true;
   // 打开设置时检查小组件状态
   checkWidgetStatus();
+  // 加载当前铃声设置
+  loadCurrentRingtone();
 }
 
 // 关闭齿轮设置
@@ -1216,6 +1218,19 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-body">
+          <!-- 闹钟铃声设置 -->
+          <div class="form-group">
+            <label>闹钟铃声</label>
+            <div class="ringtone-picker">
+              <div class="ringtone-info" @click="pickRingtone">
+                <span class="ringtone-icon-text">{{ currentRingtone.isCustom ? '🎵' : '🔔' }}</span>
+                <span class="ringtone-name">{{ currentRingtone.name }}</span>
+              </div>
+              <button v-if="currentRingtone.isCustom" class="reset-ringtone-btn" @click="resetRingtone">恢复默认</button>
+            </div>
+            <p class="ringtone-hint">点击选择本地音乐作为铃声，支持 MP3/WAV/M4A/AAC/OGG/FLAC</p>
+          </div>
+
           <!-- 小组件设置 -->
           <div class="form-group">
             <label>桌面小组件</label>
