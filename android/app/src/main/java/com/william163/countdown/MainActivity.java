@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PermissionPlugin.class);
         registerPlugin(UpdatePlugin.class);
         registerPlugin(AlarmPlugin.class);
+        registerPlugin(RingtonePlugin.class);
         super.onCreate(savedInstanceState);
         createAlarmNotificationChannel();
     }

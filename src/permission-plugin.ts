@@ -69,3 +69,17 @@ export const AlarmPlugin = registerPlugin<AlarmPluginInterface>('AlarmPlugin', {
     stopAlarm: () => Promise.resolve({ success: true }),
   },
 });
+
+export interface RingtonePluginInterface {
+  pickRingtone(): Promise<{ success: boolean; path: string; name: string; message: string }>;
+  getCurrentRingtone(): Promise<{ success: boolean; isCustom: boolean; path?: string; name: string }>;
+  resetToDefault(): Promise<{ success: boolean; message: string }>;
+}
+
+export const RingtonePlugin = registerPlugin<RingtonePluginInterface>('RingtonePlugin', {
+  web: {
+    pickRingtone: () => Promise.reject('Web 平台不支持'),
+    getCurrentRingtone: () => Promise.resolve({ success: true, isCustom: false, name: '默认铃声' }),
+    resetToDefault: () => Promise.resolve({ success: true, message: '已恢复为默认铃声' }),
+  },
+});

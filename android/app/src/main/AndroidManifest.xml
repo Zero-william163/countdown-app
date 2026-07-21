@@ -15,7 +15,11 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    
+    <!-- 读取媒体库音频权限 (Android 13+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- 读取外部存储权限 (Android 12 及以下) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
 
     <application
         android:allowBackup="true"

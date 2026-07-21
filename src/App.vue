@@ -4,7 +4,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
 import { App } from '@capacitor/app';
 import { CapacitorHttp } from '@capacitor/core';
-import { PermissionChecker, UpdatePlugin, AlarmPlugin } from './permission-plugin';
+import { PermissionChecker, UpdatePlugin, AlarmPlugin, RingtonePlugin } from './permission-plugin';
 
 const STORAGE_KEY = 'countdown_settings';
 const FIRST_LAUNCH_KEY = 'has_seen_permission_guide';
@@ -22,6 +22,9 @@ const hasBatteryOptimization = ref(false);
 const showSettings = ref(false);
 const showGearSettings = ref(false); // 齿轮设置对话框
 const showResetConfirm = ref(false);
+
+// 自定义铃声状态
+const currentRingtone = ref({ isCustom: false, name: '默认铃声', path: '' });
 const showPermissionGuide = ref(false);
 const latestVersion = ref('');
 const latestApkUrl = ref('');
@@ -189,11 +192,63 @@ async function closePermissionGuide() {
 // 打开设置
 function openSettings() {
   showSettings.value = true;
+  loadCurrentRingtone();
 }
 
 // 关闭设置
 function closeSettings() {
   showSettings.value = false;
+}
+
+// 选择自定义铃声
+async function pickRingtone() {
+  try {
+    const result = await RingtonePlugin.pickRingtone();
+    if (result.success) {
+      currentRingtone.value = {
+        isCustom: true,
+        name: result.name,
+        path: result.path
+      };
+      alert('铃声设置成功：' + result.name);
+    }
+  } catch (e: any) {
+    if (e && e.message && e.message.includes('取消')) {
+      // 用户取消，不提示
+      return;
+    }
+    alert('选择铃声失败：' + (e?.message || e));
+  }
+}
+
+// 恢复默认铃声
+async function resetRingtone() {
+  if (!confirm('确定恢复为默认铃声吗？')) return;
+  try {
+    const result = await RingtonePlugin.resetToDefault();
+    if (result.success) {
+      currentRingtone.value = { isCustom: false, name: '默认铃声', path: '' };
+      alert(result.message);
+    }
+  } catch (e: any) {
+    alert('重置失败：' + (e?.message || e));
+  }
+}
+
+// 加载当前铃声设置
+async function loadCurrentRingtone() {
+  try {
+    const result = await RingtonePlugin.getCurrentRingtone();
+    if (result.success) {
+      currentRingtone.value = {
+        isCustom: result.isCustom,
+        name: result.name || '默认铃声',
+        path: result.path || ''
+      };
+    }
+  } catch (e) {
+    // 忽略
+  }
 }
 
 // 保存设置
@@ -1121,6 +1176,24 @@ onUnmounted(() => {
               class="input-field"
             />
           </div>
+
+          <div class="form-group">
+            <label>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 3V10L8 6L12 3M21 12C21 16.97 16.97 21 12 21S3 16.97 3 12C3 7.03 7.03 3 12 3" stroke="#2B7FFF" stroke-width="2" fill="none"/>
+                <path d="M16 12C16 14.21 14.21 16 12 16S8 14.21 8 12" stroke="#2B7FFF" stroke-width="2" fill="none"/>
+              </svg>
+              闹钟铃声
+            </label>
+            <div class="ringtone-picker">
+              <div class="ringtone-info" @click="pickRingtone">
+                <span class="ringtone-icon-text">{{ currentRingtone.isCustom ? '🎵' : '🔔' }}</span>
+                <span class="ringtone-name">{{ currentRingtone.name }}</span>
+              </div>
+              <button v-if="currentRingtone.isCustom" class="reset-ringtone-btn" @click="resetRingtone">恢复默认</button>
+            </div>
+            <p class="ringtone-hint">支持 MP3/WAV/M4A/AAC/OGG/FLAC，导入后会复制到 App 私有目录</p>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -1770,6 +1843,65 @@ body {
   outline: none;
   border-color: #2B7FFF;
   background: white;
+}
+
+/* 铃声选择器样式 */
+.ringtone-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background: #FAFBFC;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.ringtone-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.ringtone-icon-text {
+  font-size: 20px;
+}
+
+.ringtone-name {
+  font-size: 15px;
+  color: #1A1A2E;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reset-ringtone-btn {
+  padding: 6px 14px;
+  border: 1px solid #FF9500;
+  border-radius: 10px;
+  background: rgba(255, 149, 0, 0.1);
+  color: #FF9500;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.reset-ringtone-btn:active {
+  background: rgba(255, 149, 0, 0.2);
+  transform: scale(0.95);
+}
+
+.ringtone-hint {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 6px;
+  line-height: 1.4;
 }
 
 .version-info {

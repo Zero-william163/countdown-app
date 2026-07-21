@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -21,6 +22,8 @@ import android.os.VibratorManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+
+import java.io.File;
 
 /**
  * 闹钟响铃前台服务
@@ -77,42 +80,81 @@ public class AlarmService extends Service {
     }
 
     /**
-     * 使用 MediaPlayer 播放系统闹钟铃声
-     * 走 STREAM_ALARM 通道，循环播放
+     * 播放铃声：优先播放自定义铃声，降级为系统默认闹钟
      */
     private void startAlarmSound() {
         try {
-            // 获取系统闹钟铃声
-            Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (alarmUri == null) {
-                alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            }
-            if (alarmUri == null) {
-                alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-            }
-
-            if (alarmUri == null) {
-                Log.e(TAG, "无法获取系统铃声URI");
-                return;
-            }
+            // 读取用户自定义铃声路径
+            SharedPreferences prefs = getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+            String customRingtonePath = prefs.getString("custom_ringtone_path", null);
 
             mediaPlayer = new MediaPlayer();
-            mediaPlayer.setDataSource(this, alarmUri);
 
-            // 确保声音走闹钟通道
+            // 设置音频属性：走 STREAM_ALARM 通道，独立于静音模式
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 AudioAttributes audioAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build();
                 mediaPlayer.setAudioAttributes(audioAttributes);
             } else {
                 mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
             }
 
-            mediaPlayer.setLooping(true); // 循环播放
-            mediaPlayer.prepare();
-            mediaPlayer.start();
+            boolean isCustomPlayed = false;
+
+            // 优先尝试播放自定义铃声
+            if (customRingtonePath != null && !customRingtonePath.trim().isEmpty()) {
+                File customFile = new File(customRingtonePath);
+                if (customFile.exists() && customFile.canRead()) {
+                    try {
+                        mediaPlayer.setDataSource(customRingtonePath);
+                        mediaPlayer.setLooping(true);
+                        mediaPlayer.prepare();
+                        mediaPlayer.start();
+                        isCustomPlayed = true;
+                        Log.d(TAG, "使用自定义铃声: " + customRingtonePath);
+                    } catch (Exception e) {
+                        Log.e(TAG, "自定义铃声播放失败，降级到系统铃声", e);
+                        // 重新创建 MediaPlayer，避免状态错误
+                        try {
+                            mediaPlayer.release();
+                        } catch (Exception ex) { /* ignore */ }
+                        mediaPlayer = new MediaPlayer();
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build();
+                            mediaPlayer.setAudioAttributes(audioAttributes);
+                        } else {
+                            mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
+                        }
+                    }
+                }
+            }
+
+            // 降级：播放系统默认闹钟铃声
+            if (!isCustomPlayed) {
+                Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                if (alarmUri == null) {
+                    alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                }
+                if (alarmUri == null) {
+                    alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                }
+
+                if (alarmUri == null) {
+                    Log.e(TAG, "无法获取系统铃声URI");
+                    return;
+                }
+
+                mediaPlayer.setDataSource(this, alarmUri);
+                mediaPlayer.setLooping(true);
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+                Log.d(TAG, "使用系统默认闹钟铃声");
+            }
 
             Log.d(TAG, "闹钟铃声开始播放");
         } catch (Exception e) {
