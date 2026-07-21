@@ -1256,6 +1256,24 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
+
+          <!-- 权限状态 -->
+          <div class="form-group">
+            <label>权限状态</label>
+            <div class="permission-check-info">
+              <div class="permission-status-mini">
+                <span v-if="allPermissionsGranted" class="perm-ok">✓ 已全部开启</span>
+                <span v-else class="perm-warn">! 部分未开启</span>
+              </div>
+              <button class="btn-check-permission" @click="checkAllPermissions">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V11H13V17ZM13 9H11V7H13V9Z" fill="#667EEA"/>
+                </svg>
+                <span>检查权限</span>
+              </button>
+            </div>
+            <p class="permission-hint">确保通知、闹钟、电池优化、自启动权限已开启</p>
+          </div>
         </div>
       </div>
     </div>
@@ -1947,6 +1965,62 @@ body {
 .btn-check-update svg {
   width: 16px;
   height: 16px;
+}
+
+/* 权限状态区域 */
+.permission-check-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #FAFBFC;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+}
+
+.permission-status-mini {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.permission-status-mini .perm-ok {
+  color: #28C76F;
+}
+
+.permission-status-mini .perm-warn {
+  color: #FF9500;
+}
+
+.btn-check-permission {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #667EEA, #764BA2);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn-check-permission:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-check-permission svg {
+  width: 16px;
+  height: 16px;
+}
+
+.permission-hint {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 8px;
+  text-align: left;
 }
 
 .modal-footer {
