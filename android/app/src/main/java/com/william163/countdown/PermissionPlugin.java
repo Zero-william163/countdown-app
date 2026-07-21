@@ -92,38 +92,10 @@ public class PermissionPlugin extends Plugin {
     public void openAutoStartSettings(PluginCall call) {
         boolean opened = false;
 
-        // 通用 Intent 方式：尝试查找系统中所有与自启动相关的页面
-        // 方法1：使用 ACTION_APPLICATION_DETAILS_SETTINGS 配合特定 action
-        try {
-            Intent intent = new Intent();
-            intent.setAction("android.settings.APPLICATION_DETAILS_SETTINGS");
-            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
-            opened = true;
-        } catch (Exception ignored) {}
-
-        // 方法2：使用自定义 action 查找自启动管理页面
+        // 【重要】优先尝试厂商专属组件，避免直接跳转到 App Info
+        // 华为/荣耀：应用启动管理（自启动管理）
         if (!opened) {
-            String[] autoStartActions = {
-                "android.settings.APPLICATION_STARTUP_SETTINGS",
-                "com.android.settings.APPLICATION_STARTUP_SETTINGS",
-                "android.intent.action.AUTO_START_SETTINGS",
-                "com.miui.securitycenter.action.SECURE_MAIN"
-            };
-            for (String action : autoStartActions) {
-                try {
-                    Intent intent = new Intent(action);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    getContext().startActivity(intent);
-                    opened = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
-        }
-
-        // 华为：方案1
-        if (!opened) {
+            // 华为：应用启动管理 - 方案1（推荐）
             try {
                 Intent intent = new Intent();
                 intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity");
@@ -133,11 +105,11 @@ public class PermissionPlugin extends Plugin {
             } catch (Exception ignored) {}
         }
 
-        // 华为：方案2
+        // 华为：方案2（旧版 EMUI）
         if (!opened) {
             try {
                 Intent intent = new Intent();
-                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity");
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.bootstart.BootStartActivity");
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
                 opened = true;
@@ -149,6 +121,39 @@ public class PermissionPlugin extends Plugin {
             try {
                 Intent intent = new Intent();
                 intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.MainActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 华为：耗电详情页（Power usage details）
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 荣耀：方案1
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 荣耀：方案2
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity");
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
                 opened = true;
@@ -248,28 +253,6 @@ public class PermissionPlugin extends Plugin {
             try {
                 Intent intent = new Intent();
                 intent.setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // 荣耀：方案1
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // 荣耀：方案2
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.hihonor.systemmanager", "com.hihonor.systemmanager.appcontrol.activity.StartupAppControlActivity");
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
                 opened = true;
