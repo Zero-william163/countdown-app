@@ -83,9 +83,12 @@ public class PermissionPlugin extends Plugin {
     @PluginMethod
     public void checkAutoStartPermission(PluginCall call) {
         // 国产手机厂商（华为/小米/OPPO/vivo）的自启动权限没有统一 API
-        // 这里返回 false，引导用户手动开启
+        // 检查用户是否已通过手动确认标记为已开启（前端 Preferences 存储为字符串）
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        String confirmedStr = prefs.getString("autostart_confirmed", null);
+        boolean confirmed = "true".equals(confirmedStr);
         JSObject result = new JSObject();
-        result.put("granted", false);
+        result.put("granted", confirmed);
         call.resolve(result);
     }
 

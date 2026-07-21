@@ -965,6 +965,7 @@ async function openPermissionSetting(permName: string) {
 // 确认打开自启动设置
 async function confirmAutoStartSetting() {
   showAutoStartGuide.value = false;
+  autoStartSettingsOpened.value = true; // 标记用户已打开自启动设置
   try {
     await PermissionChecker.openAutoStartSettings();
   } catch (e) {
@@ -1048,13 +1049,11 @@ onMounted(async () => {
             await checkAllPermissions();
             if (autoStartSettingsOpened.value && !hasAutoStartPermission.value) {
               autoStartSettingsOpened.value = false;
-              const confirmed = confirm('已在系统设置中开启自启动权限？\n\n点击"确定"后将状态标记为已开启。');
-              if (confirmed) {
-                hasAutoStartPermission.value = true;
-                try {
-                  await Preferences.set({ key: 'autostart_confirmed', value: 'true' });
-                } catch (e) {}
-              }
+              // 用户从系统设置返回，自动标记自启动为已开启
+              hasAutoStartPermission.value = true;
+              try {
+                await Preferences.set({ key: 'autostart_confirmed', value: 'true' });
+              } catch (e) {}
             } else {
               autoStartSettingsOpened.value = false;
             }
