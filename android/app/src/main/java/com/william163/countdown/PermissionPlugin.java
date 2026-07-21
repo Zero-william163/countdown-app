@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.core.app.NotificationManagerCompat;
 
@@ -325,8 +326,14 @@ public class PermissionPlugin extends Plugin {
             } catch (Exception ignored) {}
         }
 
-        // 通用：跳转到应用详情页
+        // 通用：跳转到应用详情页，并显示操作指引
         if (!opened) {
+            // 显示 Toast 提示操作路径
+            Toast.makeText(
+                getContext(),
+                "请在设置中：耗电详情 → 应用启动管理 → 允许自启动",
+                Toast.LENGTH_LONG
+            ).show();
             openAppSettingsPage();
         }
         call.resolve();

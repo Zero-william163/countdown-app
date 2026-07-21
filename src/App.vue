@@ -38,6 +38,9 @@ const isCheckingUpdate = ref(false); // 是否正在检查更新
 const widgetPinned = ref(false); // 小组件是否已添加到桌面
 const widgetCount = ref(0); // 已添加的小组件数量
 
+// 自启动权限指引弹窗
+const showAutoStartGuide = ref(false);
+
 // 权限检查状态
 const isCheckingPermissions = ref(false);
 const permissionCheckResult = ref<{
@@ -929,6 +932,12 @@ function closeGearSettings() {
 
 // 根据权限名称跳转到对应设置页面
 async function openPermissionSetting(permName: string) {
+  // 自启动权限特殊处理：先显示指引弹窗
+  if (permName === '自启动权限') {
+    showAutoStartGuide.value = true;
+    return;
+  }
+
   try {
     switch (permName) {
       case '通知权限':
@@ -940,14 +949,26 @@ async function openPermissionSetting(permName: string) {
       case '电池优化':
         await PermissionChecker.openBatterySettings();
         break;
-      case '自启动权限':
-        await PermissionChecker.openAutoStartSettings();
-        break;
       default:
         await PermissionChecker.openAppSettings();
     }
   } catch (e) {
     console.error('打开设置失败:', e);
+    try {
+      await PermissionChecker.openAppSettings();
+    } catch (ee) {
+      console.error('打开应用设置失败:', ee);
+    }
+  }
+}
+
+// 确认打开自启动设置
+async function confirmAutoStartSetting() {
+  showAutoStartGuide.value = false;
+  try {
+    await PermissionChecker.openAutoStartSettings();
+  } catch (e) {
+    console.error('打开自启动设置失败:', e);
     try {
       await PermissionChecker.openAppSettings();
     } catch (ee) {
@@ -1500,6 +1521,32 @@ onUnmounted(() => {
         
         <div class="confirm-actions">
           <button class="btn-text" @click="closeUpdateDialog">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自启动权限指引弹窗 -->
+    <div v-if="showAutoStartGuide" class="modal-overlay">
+      <div class="confirm-card" style="max-width: 400px;">
+        <h3 style="margin-bottom: 12px; color: #1a1a1a;">开启自启动权限</h3>
+        <p style="margin-bottom: 12px; color: #666; text-align: left; line-height: 1.6;">
+          为了确保每日提醒准时送达，请按以下步骤开启自启动权限：
+        </p>
+        <div style="margin-bottom: 16px; padding: 12px; background: #FFF7ED; border-radius: 8px; border-left: 3px solid #FF9500;">
+          <p style="font-size: 13px; color: #333; margin: 0; line-height: 1.8;">
+            <strong>华为/荣耀：</strong><br/>
+            耗电详情 → 应用启动管理 → 关闭「自动管理」→ 勾选「允许自启动」
+          </p>
+        </div>
+        <div style="margin-bottom: 16px; padding: 12px; background: #FFF7ED; border-radius: 8px; border-left: 3px solid #FF9500;">
+          <p style="font-size: 13px; color: #333; margin: 0; line-height: 1.8;">
+            <strong>小米/红米：</strong><br/>
+            手机管家 → 自启动管理 → 找到本应用并开启
+          </p>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn-text" @click="showAutoStartGuide = false">取消</button>
+          <button class="btn-primary" @click="confirmAutoStartSetting">去设置</button>
         </div>
       </div>
     </div>
@@ -2302,6 +2349,22 @@ body {
   color: #6B7280;
   cursor: pointer;
   padding: 8px;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #2B7FFF, #1E5FD9);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn-primary:active {
+  transform: scale(0.95);
 }
 
 .btn-primary-text {
