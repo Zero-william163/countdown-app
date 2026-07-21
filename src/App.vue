@@ -1140,18 +1140,52 @@ onUnmounted(() => {
           <h3>每日提醒</h3>
           <p>每天 {{ reminderTime }} 准时提醒</p>
         </div>
-        <div v-if="hasPermission && hasExactAlarmPermission && hasBatteryOptimization" class="permission-status active">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
-          </svg>
-          <span>所有权限已开启</span>
-          <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
-        </div>
-        <div v-else class="permission-status warning" @click="showPermissionGuide = true">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
-          </svg>
-          <span>权限不完整，点击检查</span>
+        <div class="permission-status-container">
+          <div v-if="isCheckingPermissions" class="permission-status checking">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle class="spin" cx="12" cy="12" r="10" stroke="#2B7FFF" stroke-width="2" fill="none"/>
+            </svg>
+            <span>正在检查中...</span>
+          </div>
+          <div v-else-if="permissionCheckResult && permissionCheckResult.allOk" class="permission-status active">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
+            </svg>
+            <span>所有权限已开启</span>
+            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+          </div>
+          <div v-else-if="permissionCheckResult && !permissionCheckResult.allOk" class="permission-status warning">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
+            </svg>
+            <span>{{ permissionCheckResult.missing.length }} 项权限未开启</span>
+            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+          </div>
+          <div v-else-if="hasPermission && hasExactAlarmPermission && hasBatteryOptimization" class="permission-status active">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
+            </svg>
+            <span>所有权限已开启</span>
+            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+          </div>
+          <div v-else class="permission-status warning">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
+            </svg>
+            <span>权限不完整，点击检查</span>
+            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+          </div>
+
+          <!-- 未开启权限列表 -->
+          <div v-if="permissionCheckResult && !permissionCheckResult.allOk && permissionCheckResult.missing.length > 0" class="permission-missing-list-main">
+            <p class="missing-title-main">需要开启：</p>
+            <div class="missing-items-main">
+              <div v-for="(perm, idx) in permissionCheckResult.missing" :key="idx" class="missing-item-main">
+                <span>{{ perm }}</span>
+                <button class="btn-fix-perm-main" @click="openPermissionSetting(perm)">去设置</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1330,39 +1364,6 @@ onUnmounted(() => {
                 <span>{{ isCheckingUpdate ? '检查中...' : '检查更新' }}</span>
               </button>
             </div>
-          </div>
-
-          <!-- 权限状态 -->
-          <div class="form-group">
-            <label>权限状态</label>
-            <div class="permission-check-info">
-              <div class="permission-status-mini">
-                <span v-if="isCheckingPermissions" class="perm-checking">正在检查中...</span>
-                <span v-else-if="permissionCheckResult && permissionCheckResult.allOk" class="perm-ok">✓ 所有权限已开启</span>
-                <span v-else-if="permissionCheckResult && !permissionCheckResult.allOk" class="perm-warn">! {{ permissionCheckResult.missing.length }} 项未开启</span>
-                <span v-else-if="allPermissionsGranted" class="perm-ok">✓ 已全部开启</span>
-                <span v-else class="perm-warn">! 部分未开启</span>
-              </div>
-              <button class="btn-check-permission" @click="checkAllPermissions" :disabled="isCheckingPermissions">
-                <svg v-if="!isCheckingPermissions" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V11H13V17ZM13 9H11V7H13V9Z" fill="#667EEA"/>
-                </svg>
-                <span>{{ isCheckingPermissions ? '检查中...' : '检查权限' }}</span>
-              </button>
-            </div>
-
-            <!-- 未开启权限列表 -->
-            <div v-if="permissionCheckResult && !permissionCheckResult.allOk && permissionCheckResult.missing.length > 0" class="permission-missing-list">
-              <p class="missing-title">以下权限需要开启：</p>
-              <div class="missing-items">
-                <div v-for="(perm, idx) in permissionCheckResult.missing" :key="idx" class="missing-item">
-                  <span>{{ perm }}</span>
-                  <button class="btn-fix-perm" @click="openPermissionSetting(perm)">去设置</button>
-                </div>
-              </div>
-            </div>
-
-            <p class="permission-hint">确保通知、闹钟、电池优化、自启动权限已开启</p>
           </div>
         </div>
       </div>
@@ -1759,6 +1760,75 @@ body {
 
 .check-permission-btn:active {
   background: rgba(40, 199, 111, 0.2);
+  transform: scale(0.95);
+}
+
+.permission-status-container {
+  width: 100%;
+}
+
+.permission-status.checking {
+  color: #2B7FFF;
+}
+
+.permission-status.checking svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.permission-missing-list-main {
+  margin-top: 12px;
+  padding: 12px;
+  background: #FFF5F5;
+  border-radius: 10px;
+  border: 1px solid #FFCDD2;
+}
+
+.missing-title-main {
+  font-size: 13px;
+  color: #D32F2F;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+.missing-items-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.missing-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #FFEBEE;
+}
+
+.missing-item-main span {
+  font-size: 13px;
+  color: #333;
+}
+
+.btn-fix-perm-main {
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #FF6B6B, #EE5A5A);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn-fix-perm-main:active {
   transform: scale(0.95);
 }
 
