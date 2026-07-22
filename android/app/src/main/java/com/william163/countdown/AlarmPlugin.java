@@ -193,6 +193,8 @@ public class AlarmPlugin extends Plugin {
     private int cancelAllAlarmsInternal() {
         // 重置再响次数
         AlarmService.resetSnoozeCount(getContext());
+        // 取消再响闹钟
+        AlarmService.cancelSnoozeAlarm(getContext());
 
         AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return 0;

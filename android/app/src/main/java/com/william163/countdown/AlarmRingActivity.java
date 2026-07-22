@@ -263,6 +263,7 @@ public class AlarmRingActivity extends AppCompatActivity {
 
     private void stopAlarmAndFinish() {
         AlarmService.resetSnoozeCount(this);
+        AlarmService.cancelSnoozeAlarm(this);
         AlarmService.stopAlarm(this);
         finishAlarmActivity();
     }

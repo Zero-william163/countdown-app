@@ -370,13 +370,22 @@ public class AlarmService extends Service {
         context.stopService(new Intent(context, AlarmService.class));
     }
 
+    private static final String SNOOZE_PREFS_NAME = "snooze_alarm_prefs";
+    private static final String KEY_SNOOZE_TIME = "snooze_trigger_time";
+    private static final String KEY_SNOOZE_TITLE = "snooze_title";
+    private static final String KEY_SNOOZE_CONTENT = "snooze_content";
+    private static final int SNOOZE_REQUEST_CODE = 9999;
+
     /**
      * 稍后提醒：停止当前闹钟，在指定分钟数后重新触发
+     * 使用独立的 requestCode (SNOOZE_REQUEST_CODE = 9999)，避免与正常闹钟冲突
      */
     public static void snoozeAlarm(Context context, int minutes, String title, String content) {
         stopAlarm(context);
 
         long triggerTime = System.currentTimeMillis() + minutes * 60 * 1000L;
+        // 使用独立 requestCode，避免覆盖用户设置的每日提醒闹钟
+        final int requestCode = SNOOZE_REQUEST_CODE;
 
         try {
             android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -385,9 +394,20 @@ public class AlarmService extends Service {
             intent.putExtra("content", content != null ? content : "闹钟响了，点击关闭");
             intent.putExtra("is_snooze", true);
             PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                context, 1, intent,
+                context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
+
+            // 先取消可能已存在的旧再响闹钟，避免重复
+            alarmManager.cancel(pendingIntent);
+
+            // 保存再响闹钟信息，用于设备重启后恢复
+            SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit()
+                .putLong(KEY_SNOOZE_TIME, triggerTime)
+                .putString(KEY_SNOOZE_TITLE, title)
+                .putString(KEY_SNOOZE_CONTENT, content)
+                .apply();
 
             // 使用 setAlarmClock 确保在 Doze 模式下也能准时唤醒
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -407,10 +427,48 @@ public class AlarmService extends Service {
                     pendingIntent
                 );
             }
-            Log.d(TAG, "已设置 " + minutes + " 分钟后再次提醒");
+            Log.d(TAG, "已设置 " + minutes + " 分钟后再次提醒，触发时间: " + triggerTime);
         } catch (Exception e) {
             Log.e(TAG, "设置稍后提醒失败", e);
         }
+    }
+
+    /**
+     * 取消再响闹钟
+     */
+    public static void cancelSnoozeAlarm(Context context) {
+        try {
+            android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            Intent intent = new Intent(context, AlarmReceiver.class);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context, SNOOZE_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            alarmManager.cancel(pendingIntent);
+
+            // 清除保存的再响信息
+            SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().clear().apply();
+
+            Log.d(TAG, "已取消再响闹钟");
+        } catch (Exception e) {
+            Log.e(TAG, "取消再响闹钟失败", e);
+        }
+    }
+
+    /**
+     * 获取保存的再响闹钟信息
+     */
+    public static android.os.Bundle getSavedSnoozeInfo(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS_NAME, Context.MODE_PRIVATE);
+        long triggerTime = prefs.getLong(KEY_SNOOZE_TIME, 0);
+        if (triggerTime <= 0) return null;
+
+        android.os.Bundle bundle = new android.os.Bundle();
+        bundle.putLong(KEY_SNOOZE_TIME, triggerTime);
+        bundle.putString(KEY_SNOOZE_TITLE, prefs.getString(KEY_SNOOZE_TITLE, "倒计时提醒"));
+        bundle.putString(KEY_SNOOZE_CONTENT, prefs.getString(KEY_SNOOZE_CONTENT, "闹钟响了，点击关闭"));
+        return bundle;
     }
 
     @Override

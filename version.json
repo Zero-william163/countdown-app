@@ -1,5 +1,5 @@
 {
-  "version": "3.9.56",
-  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.56/countdown-3.9.56.apk",
-  "releaseNotes": "修复更新检测失败问题，添加 jsDelivr CDN 备用源"
+  "version": "3.9.57",
+  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.57/countdown-3.9.57.apk",
+  "releaseNotes": "修复10分钟后再响闹钟不触发的问题，添加再响闹钟持久化和重启恢复"
 }

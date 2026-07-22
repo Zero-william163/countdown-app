@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -185,10 +186,62 @@ public class AlarmRestoreService extends Service {
             }
             prefs.edit().putString(ALARM_IDS_KEY, jsonArray.toString()).apply();
 
+            // 恢复再响闹钟（如果存在且未过期）
+            restoreSnoozeAlarm(alarmManager);
+
             Log.d(TAG, "闹钟恢复完成，共恢复 " + alarmIds.size() + " 个闹钟");
 
         } catch (Exception e) {
             Log.e(TAG, "恢复闹钟失败", e);
+        }
+    }
+
+    /**
+     * 恢复再响闹钟（设备重启后）
+     */
+    private void restoreSnoozeAlarm(AlarmManager alarmManager) {
+        try {
+            android.os.Bundle snoozeInfo = AlarmService.getSavedSnoozeInfo(this);
+            if (snoozeInfo == null) {
+                Log.d(TAG, "没有保存的再响闹钟，跳过恢复");
+                return;
+            }
+
+            long triggerTime = snoozeInfo.getLong("snooze_trigger_time", 0);
+            String title = snoozeInfo.getString("snooze_title", "倒计时提醒");
+            String content = snoozeInfo.getString("snooze_content", "闹钟响了，点击关闭");
+
+            if (triggerTime <= System.currentTimeMillis()) {
+                Log.d(TAG, "再响闹钟已过期，清除保存的信息");
+                AlarmService.cancelSnoozeAlarm(this);
+                return;
+            }
+
+            Intent intent = new Intent(this, AlarmReceiver.class);
+            intent.putExtra("title", title);
+            intent.putExtra("content", content);
+            intent.putExtra("is_snooze", true);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                this, 9999, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                AlarmManager.AlarmClockInfo alarmClockInfo =
+                    new AlarmManager.AlarmClockInfo(triggerTime, pendingIntent);
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+            }
+
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+            Log.d(TAG, "再响闹钟已恢复，触发时间: " + sdf.format(new Date(triggerTime)));
+        } catch (Exception e) {
+            Log.e(TAG, "恢复再响闹钟失败", e);
         }
     }
 }
