@@ -33,6 +33,7 @@ const isUpdating = ref(false);
 const updateStatus = ref('');
 const showUpdateDialog = ref(false);
 const hasAutoStartPermission = ref(false); // 自启动权限
+const hasOverlayPermission = ref(false); // 悬浮窗/后台弹出界面权限
   const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
 const isCheckingUpdate = ref(false); // 是否正在检查更新
 const widgetPinned = ref(false); // 小组件是否已添加到桌面
@@ -132,12 +133,21 @@ async function checkAllPermissions() {
       console.log('检查自启动权限失败:', e);
     }
 
+    // 检查悬浮窗/后台弹出界面权限
+    try {
+      const overlayResult = await PermissionChecker.checkOverlayPermission();
+      hasOverlayPermission.value = overlayResult.granted;
+    } catch (e) {
+      console.log('检查悬浮窗权限失败:', e);
+    }
+
     // 收集未开启的权限
     const missing: string[] = [];
     if (!hasPermission.value) missing.push('通知权限');
     if (!hasExactAlarmPermission.value) missing.push('精确闹钟权限');
     if (!hasBatteryOptimization.value) missing.push('电池优化');
     if (!hasAutoStartPermission.value) missing.push('自启动权限');
+    if (!hasOverlayPermission.value) missing.push('悬浮窗权限');
 
     permissionCheckResult.value = {
       checking: false,
@@ -159,7 +169,8 @@ async function checkAllPermissions() {
 // 所有权限是否都已开启
 const allPermissionsGranted = computed(() => {
   return hasPermission.value && hasExactAlarmPermission.value &&
-         hasBatteryOptimization.value && hasAutoStartPermission.value;
+         hasBatteryOptimization.value && hasAutoStartPermission.value &&
+         hasOverlayPermission.value;
 });
 
 // 打开精确闹钟设置
@@ -211,6 +222,20 @@ async function openAppSettingsPage() {
     await PermissionChecker.openAppSettings();
   } catch (e) {
     console.log('打开应用设置失败:', e);
+  }
+}
+
+// 打开悬浮窗/后台弹出界面设置
+async function openOverlaySettings() {
+  try {
+    await PermissionChecker.requestOverlayPermission();
+  } catch (e) {
+    console.error('打开悬浮窗设置失败:', e);
+    try {
+      await PermissionChecker.openAppSettings();
+    } catch (ee) {
+      console.log('打开应用设置失败:', ee);
+    }
   }
 }
 
@@ -949,6 +974,9 @@ async function openPermissionSetting(permName: string) {
       case '电池优化':
         await PermissionChecker.openBatterySettings();
         break;
+      case '悬浮窗权限':
+        await PermissionChecker.requestOverlayPermission();
+        break;
       default:
         await PermissionChecker.openAppSettings();
     }
@@ -1456,6 +1484,20 @@ onUnmounted(() => {
               <p class="permission-item-desc">防止系统休眠时杀掉后台，确保闹钟准时提醒、小组件正常刷新</p>
             </div>
             <svg v-if="hasBatteryOptimization" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
+            <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+          </div>
+
+          <!-- 悬浮窗/后台弹出界面权限 -->
+          <div class="permission-item" @click="openOverlaySettings">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>悬浮窗/后台弹出</span>
+                <span v-if="hasOverlayPermission" class="perm-badge perm-badge-ok">已开启</span>
+                <span v-else class="perm-badge perm-badge-warn">未开启</span>
+              </div>
+              <p class="permission-item-desc">允许闹钟在锁屏时弹出全屏界面，否则只有声音没有关闭入口</p>
+            </div>
+            <svg v-if="hasOverlayPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 

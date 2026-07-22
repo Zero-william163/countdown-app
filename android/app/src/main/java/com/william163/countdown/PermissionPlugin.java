@@ -419,4 +419,159 @@ public class PermissionPlugin extends Plugin {
             Log.e(TAG, "打开应用详情页失败", e);
         }
     }
+
+    /**
+     * 检查悬浮窗权限（华为/小米等厂商的"后台弹出界面"也与此权限关联）
+     */
+    @PluginMethod
+    public void checkOverlayPermission(PluginCall call) {
+        JSObject result = new JSObject();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            result.put("granted", Settings.canDrawOverlays(getContext()));
+        } else {
+            result.put("granted", true);
+        }
+        call.resolve(result);
+    }
+
+    /**
+     * 请求悬浮窗/后台弹出界面权限
+     * 跳转到系统设置让用户手动开启
+     */
+    @PluginMethod
+    public void requestOverlayPermission(PluginCall call) {
+        boolean opened = false;
+
+        // 华为：悬浮窗权限设置页
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 华为：方案2 - 悬浮窗管理
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.floatwindow.FloatWindowMainActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 小米：悬浮窗权限
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
+                intent.putExtra("extra_pkgname", getContext().getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // OPPO：悬浮窗设置
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.floatwindow.FloatWindowListActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // vivo：悬浮窗管理
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.iqoo.secure", "com.iqoo.secure.ui.dialog.FloatWindowPermissionDialog");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 通用：Android 原生悬浮窗权限设置
+        if (!opened) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+                    intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(intent);
+                    opened = true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 最终兜底：应用详情页
+        if (!opened) {
+            Toast.makeText(
+                getContext(),
+                "请在设置中开启：权限 → 悬浮窗 / 后台弹出界面",
+                Toast.LENGTH_LONG
+            ).show();
+            openAppSettingsPage();
+        }
+
+        call.resolve();
+    }
+
+    /**
+     * 检查所有闹钟相关权限是否就绪
+     */
+    @PluginMethod
+    public void checkAllAlarmPermissions(PluginCall call) {
+        JSObject result = new JSObject();
+
+        // 1. 精确闹钟权限
+        boolean exactAlarm;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
+            exactAlarm = alarmManager != null && alarmManager.canScheduleExactAlarms();
+        } else {
+            exactAlarm = true;
+        }
+        result.put("exactAlarm", exactAlarm);
+
+        // 2. 电池优化白名单
+        boolean batteryOpt;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            batteryOpt = pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+        } else {
+            batteryOpt = true;
+        }
+        result.put("batteryOptimization", batteryOpt);
+
+        // 3. 通知权限
+        result.put("notification", NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
+
+        // 4. 悬浮窗/后台弹出界面权限
+        boolean overlay;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            overlay = Settings.canDrawOverlays(getContext());
+        } else {
+            overlay = true;
+        }
+        result.put("overlay", overlay);
+
+        // 5. 自启动权限（用户手动确认标记）
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        result.put("autoStart", "true".equals(prefs.getString("autostart_confirmed", null)));
+
+        // 总结
+        boolean allGranted = exactAlarm && batteryOpt && overlay;
+        result.put("allGranted", allGranted);
+        result.put("success", true);
+
+        call.resolve(result);
+    }
 }

@@ -219,13 +219,17 @@ public class AlarmService extends Service {
 
     /**
      * 创建全屏闹钟通知，带有关闭按钮
+     * 通知的 contentIntent 和 fullScreenIntent 都指向 AlarmRingActivity
+     * 确保即使全屏界面被拦截，用户点击通知横幅也能进入闹钟关闭界面
      */
     private Notification createNotification(String title, String content) {
-        // 点击通知打开应用
-        Intent openIntent = new Intent(this, MainActivity.class);
+        // 点击通知也打开全屏闹钟界面（而非主界面，方便用户快速关闭闹钟）
+        Intent openIntent = new Intent(this, AlarmRingActivity.class);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        openIntent.putExtra("title", title);
+        openIntent.putExtra("content", content);
         PendingIntent openPendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
+            this, 1, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
