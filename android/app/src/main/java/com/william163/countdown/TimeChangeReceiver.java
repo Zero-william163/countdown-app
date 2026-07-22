@@ -7,19 +7,20 @@ import android.os.Build;
 import android.util.Log;
 
 /**
- * 开机启动接收器
- * 用于在设备重启后恢复闹钟提醒
+ * 系统时间变更监听器
+ * 当用户修改系统时间或切换时区时，自动重新校准闹钟
  */
-public class BootReceiver extends BroadcastReceiver {
-    private static final String TAG = "BootReceiver";
+public class TimeChangeReceiver extends BroadcastReceiver {
+    private static final String TAG = "TimeChangeReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction()) ||
-            Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(intent.getAction())) {
-            Log.d(TAG, "设备已启动，恢复闹钟服务");
+        String action = intent.getAction();
+        if (Intent.ACTION_TIME_CHANGED.equals(action) ||
+            Intent.ACTION_TIMEZONE_CHANGED.equals(action)) {
+            Log.d(TAG, "系统时间变更: " + action + "，重新恢复闹钟");
 
-            // 启动服务恢复闹钟
+            // 启动恢复服务重新校准闹钟
             Intent serviceIntent = new Intent(context, AlarmRestoreService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent);

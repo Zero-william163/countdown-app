@@ -35,6 +35,11 @@ public class AlarmPlugin extends Plugin {
     private static final String PREFS_NAME = "alarm_prefs";
     private static final String ALARM_IDS_KEY = "alarm_ids";
     private static final int ALARM_BASE_ID = 10000;
+    private static final String KEY_HOUR = "restore_hour";
+    private static final String KEY_MINUTE = "restore_minute";
+    private static final String KEY_TARGET_NAME = "restore_target_name";
+    private static final String KEY_DAYS_REMAINING = "restore_days_remaining";
+    private static final String KEY_TARGET_DATE = "restore_target_date";
 
     /**
      * 设置每日闹钟
@@ -118,6 +123,9 @@ public class AlarmPlugin extends Plugin {
             // 保存闹钟ID列表
             saveAlarmIds(alarmIds);
 
+            // 保存调度参数，用于开机/时间变更后恢复
+            saveRestoreParams(hour, minute, targetName, daysRemaining, targetDate);
+
             JSObject result = new JSObject();
             result.put("success", true);
             result.put("count", alarmIds.size());
@@ -183,6 +191,9 @@ public class AlarmPlugin extends Plugin {
      * 取消所有已设置的闹钟
      */
     private int cancelAllAlarmsInternal() {
+        // 重置再响次数
+        AlarmService.resetSnoozeCount(getContext());
+
         AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return 0;
 
@@ -227,5 +238,19 @@ public class AlarmPlugin extends Plugin {
             Log.e(TAG, "读取闹钟ID失败", e);
         }
         return alarmIds;
+    }
+
+    /**
+     * 保存调度参数，用于开机/时间变更后恢复闹钟
+     */
+    private void saveRestoreParams(int hour, int minute, String targetName, int daysRemaining, String targetDate) {
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit()
+            .putInt(KEY_HOUR, hour)
+            .putInt(KEY_MINUTE, minute)
+            .putString(KEY_TARGET_NAME, targetName)
+            .putInt(KEY_DAYS_REMAINING, daysRemaining)
+            .putString(KEY_TARGET_DATE, targetDate)
+            .apply();
     }
 }

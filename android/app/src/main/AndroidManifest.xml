@@ -83,6 +83,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- 系统时间变更监听器 - 时区/时间修改后重新校准闹钟 -->
+        <receiver
+            android:name=".TimeChangeReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- 前台服务 - 用于恢复闹钟 -->
         <service
             android:name=".AlarmRestoreService"

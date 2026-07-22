@@ -14,7 +14,10 @@ import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.animation.ValueAnimator;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -34,10 +37,19 @@ public class AlarmService extends Service {
     private static final String TAG = "AlarmService";
     private static final int NOTIFICATION_ID = 2001;
     private static final String CHANNEL_ID = "alarm_ringing_channel";
+    private static final long AUTO_STOP_DELAY = 2 * 60 * 1000L; // 2分钟自动停止
+    private static final int MAX_SNOOZE = 3; // 最大再响次数
+    private static final String SNOOZE_PREFS = "alarm_prefs";
+    private static final String SNOOZE_COUNT_KEY = "snooze_count";
 
     private MediaPlayer mediaPlayer;
     private Vibrator vibrator;
     private PowerManager.WakeLock wakeLock;
+    private ValueAnimator volumeAnimator;
+    private Handler autoStopHandler;
+    private Runnable autoStopRunnable;
+    private String alarmTitle = "倒计时提醒";
+    private String alarmContent = "闹钟响了，点击关闭";
 
     @Override
     public void onCreate() {
@@ -69,12 +81,21 @@ public class AlarmService extends Service {
             if (content == null) content = "闹钟响了，点击关闭";
         }
 
+        this.alarmTitle = title;
+        this.alarmContent = content;
+
         // 启动前台通知
         startForeground(NOTIFICATION_ID, createNotification(title, content));
 
         // 开始播放声音和震动
         startAlarmSound();
         startVibration();
+
+        // 音量渐进增大
+        startVolumeFadeIn();
+
+        // 超时自动停止（2分钟后）
+        startAutoStopTimer();
 
         return START_STICKY;
     }
@@ -259,16 +280,149 @@ public class AlarmService extends Service {
     }
 
     /**
+     * 音量渐进增大（Fade-in）
+     * 在10秒内将音量从0%逐渐过渡到100%，避免突然大声吓到用户
+     */
+    private void startVolumeFadeIn() {
+        if (mediaPlayer != null) {
+            try {
+                mediaPlayer.setVolume(0f, 0f);
+                volumeAnimator = ValueAnimator.ofFloat(0f, 1f);
+                volumeAnimator.setDuration(10000); // 10秒渐变
+                volumeAnimator.addUpdateListener(animation -> {
+                    float volume = (float) animation.getAnimatedValue();
+                    if (mediaPlayer != null) {
+                        try {
+                            mediaPlayer.setVolume(volume, volume);
+                        } catch (Exception e) {
+                            Log.e(TAG, "设置音量失败", e);
+                        }
+                    }
+                });
+                volumeAnimator.start();
+                Log.d(TAG, "音量渐进增大已启动");
+            } catch (Exception e) {
+                Log.e(TAG, "启动音量渐进失败", e);
+            }
+        }
+    }
+
+    /**
+     * 超时自动停止
+     * 响铃2分钟后自动停止，如果再响次数未达上限则自动稍后提醒
+     */
+    private void startAutoStopTimer() {
+        autoStopHandler = new Handler(Looper.getMainLooper());
+        autoStopRunnable = () -> {
+            Log.d(TAG, "闹钟超时自动停止");
+            int count = getSnoozeCount(this);
+            if (count < MAX_SNOOZE) {
+                snoozeAlarm(this, 10, alarmTitle, alarmContent);
+            } else {
+                stopAlarm(this);
+            }
+        };
+        autoStopHandler.postDelayed(autoStopRunnable, AUTO_STOP_DELAY);
+    }
+
+    /**
+     * 获取当前再响次数
+     */
+    public static int getSnoozeCount(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS, Context.MODE_PRIVATE);
+        return prefs.getInt(SNOOZE_COUNT_KEY, 0);
+    }
+
+    /**
+     * 增加再响次数
+     */
+    public static void incrementSnoozeCount(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS, Context.MODE_PRIVATE);
+        int count = prefs.getInt(SNOOZE_COUNT_KEY, 0);
+        prefs.edit().putInt(SNOOZE_COUNT_KEY, count + 1).apply();
+    }
+
+    /**
+     * 重置再响次数
+     */
+    public static void resetSnoozeCount(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(SNOOZE_PREFS, Context.MODE_PRIVATE);
+        prefs.edit().putInt(SNOOZE_COUNT_KEY, 0).apply();
+    }
+
+    /**
+     * 获取最大再响次数
+     */
+    public static int getMaxSnoozeCount() {
+        return MAX_SNOOZE;
+    }
+
+    /**
      * 停止所有声音和震动，释放资源
      */
     public static void stopAlarm(Context context) {
         context.stopService(new Intent(context, AlarmService.class));
     }
 
+    /**
+     * 稍后提醒：停止当前闹钟，在指定分钟数后重新触发
+     */
+    public static void snoozeAlarm(Context context, int minutes, String title, String content) {
+        stopAlarm(context);
+
+        long triggerTime = System.currentTimeMillis() + minutes * 60 * 1000L;
+
+        try {
+            android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            Intent intent = new Intent(context, AlarmReceiver.class);
+            intent.putExtra("title", title != null ? title : "倒计时提醒");
+            intent.putExtra("content", content != null ? content : "闹钟响了，点击关闭");
+            intent.putExtra("is_snooze", true);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context, 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            // 使用 setAlarmClock 确保在 Doze 模式下也能准时唤醒
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                android.app.AlarmManager.AlarmClockInfo alarmClockInfo =
+                    new android.app.AlarmManager.AlarmClockInfo(triggerTime, pendingIntent);
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                );
+            } else {
+                alarmManager.setExact(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                );
+            }
+            Log.d(TAG, "已设置 " + minutes + " 分钟后再次提醒");
+        } catch (Exception e) {
+            Log.e(TAG, "设置稍后提醒失败", e);
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "闹钟服务停止，释放资源");
+
+        // 取消音量渐进动画
+        if (volumeAnimator != null) {
+            volumeAnimator.cancel();
+            volumeAnimator = null;
+        }
+
+        // 取消超时自动停止
+        if (autoStopHandler != null) {
+            autoStopHandler.removeCallbacks(autoStopRunnable);
+            autoStopHandler = null;
+        }
 
         // 停止并释放 MediaPlayer
         if (mediaPlayer != null) {
