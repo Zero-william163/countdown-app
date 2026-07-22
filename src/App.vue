@@ -689,19 +689,23 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
   return null;
 }
 
-// 检查更新 - 以GitHub Releases API为唯一主源
+// 检查更新 - 多源检测，确保国内网络可访问
 // 发布新版本时，只需在GitHub创建Release并上传APK，所有旧版本自动检测到更新
 async function checkForUpdate(manualUrl?: string) {
-  // GitHub API 镜像（国内访问加速，防止 GitHub API 被墙导致检测失败）
-  const GITHUB_API_MIRRORS = [
+  // 更新检测源（按优先级排序）
+  // 1. jsDelivr CDN - 国内可访问，最可靠
+  // 2. GitHub API 官方 - 国外网络可用
+  // 3. 镜像代理 - 备用
+  const UPDATE_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
+    'https://fastly.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
+    'https://gcore.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
     'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
-    'https://gh-proxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
-    'https://ghfast.top/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
-    'https://cors.istack.io/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest'
+    'https://gh-proxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest'
   ];
 
-  // 构建URL列表：手动URL > GitHub API 镜像列表
-  const urls = manualUrl ? [manualUrl, ...GITHUB_API_MIRRORS] : GITHUB_API_MIRRORS;
+  // 构建URL列表：手动URL > 更新源列表
+  const urls = manualUrl ? [manualUrl, ...UPDATE_SOURCES] : UPDATE_SOURCES;
 
   let foundVersion = '';
   let foundApkUrl = '';
@@ -710,12 +714,13 @@ async function checkForUpdate(manualUrl?: string) {
     try {
       console.log('[Update] 正在请求更新源:', url);
       const isGithubApi = url.includes('api.github.com');
+      const isJsDelivr = url.includes('jsdelivr.net');
       const response = await CapacitorHttp.get({
         url,
         headers: isGithubApi ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {},
-        // 设置超时 15 秒，避免某个镜像卡住整个检测流程
-        connectTimeout: 15000,
-        readTimeout: 15000
+        // jsDelivr CDN 设置较短超时，快速失败切换到下一个源
+        connectTimeout: isJsDelivr ? 8000 : 15000,
+        readTimeout: isJsDelivr ? 8000 : 15000
       } as any);
       console.log('[Update] 响应状态:', response.status);
       if (response.status === 200 && response.data) {
