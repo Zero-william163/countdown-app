@@ -1,5 +1,5 @@
 {
-  "version": "3.9.57",
-  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.57/countdown-3.9.57.apk",
-  "releaseNotes": "修复10分钟后再响闹钟不触发的问题，添加再响闹钟持久化和重启恢复"
+  "version": "3.9.58",
+  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.58/countdown-3.9.58.apk",
+  "releaseNotes": "添加USE_EXACT_ALARM权限，完善保活权限引导（锁屏显示、多任务加锁）"
 }

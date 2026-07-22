@@ -1555,6 +1555,29 @@ onUnmounted(() => {
             <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
+          <!-- 华为/小米等厂商：锁屏显示权限 -->
+          <div class="permission-item" @click="openBackgroundPopupSettings">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>锁屏显示</span>
+                <span class="perm-badge perm-badge-info">需手动开启</span>
+              </div>
+              <p class="permission-item-desc">允许闹钟在锁屏状态下直接显示全屏界面，华为/小米必须开启</p>
+            </div>
+            <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+          </div>
+
+          <!-- 多任务卡片加锁提示 -->
+          <div class="permission-item" style="background: #FFF8E1; border: 1px solid #FFE082;">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>多任务卡片加锁</span>
+                <span class="perm-badge perm-badge-info">重要</span>
+              </div>
+              <p class="permission-item-desc">从底部上滑进入多任务，按住本应用卡片向下滑动，直到出现🔒锁头图标，防止一键清理被杀</p>
+            </div>
+          </div>
+
           <!-- 打开应用设置 -->
           <div class="permission-item" @click="openAppSettingsPage">
             <div class="permission-item-info">
