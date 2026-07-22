@@ -1,6 +1,7 @@
 package com.william163.countdown;
 
 import android.app.AlarmManager;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -421,13 +422,15 @@ public class PermissionPlugin extends Plugin {
     }
 
     /**
-     * 检查悬浮窗权限（华为/小米等厂商的"后台弹出界面"也与此权限关联）
+     * 检查 Android 14+ USE_FULL_SCREEN_INTENT 权限
+     * 该权限允许应用发送全屏通知（如闹钟、来电），在锁屏时亮屏弹出
      */
     @PluginMethod
-    public void checkOverlayPermission(PluginCall call) {
+    public void checkFullScreenIntentPermission(PluginCall call) {
         JSObject result = new JSObject();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            result.put("granted", Settings.canDrawOverlays(getContext()));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            NotificationManager notificationManager = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            result.put("granted", notificationManager != null && notificationManager.canUseFullScreenIntent());
         } else {
             result.put("granted", true);
         }
@@ -435,92 +438,23 @@ public class PermissionPlugin extends Plugin {
     }
 
     /**
-     * 请求悬浮窗/后台弹出界面权限
-     * 跳转到系统设置让用户手动开启
+     * 请求 Android 14+ USE_FULL_SCREEN_INTENT 权限
      */
     @PluginMethod
-    public void requestOverlayPermission(PluginCall call) {
-        boolean opened = false;
-
-        // 华为：悬浮窗权限设置页
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.addviewmonitor.AddViewMonitorActivity");
+    public void requestFullScreenIntentPermission(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+                intent.setData(Uri.parse("package:" + getContext().getPackageName()));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // 华为：方案2 - 悬浮窗管理
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.floatwindow.FloatWindowMainActivity");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // 小米：悬浮窗权限
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
-                intent.putExtra("extra_pkgname", getContext().getPackageName());
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // OPPO：悬浮窗设置
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.floatwindow.FloatWindowListActivity");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // vivo：悬浮窗管理
-        if (!opened) {
-            try {
-                Intent intent = new Intent();
-                intent.setClassName("com.iqoo.secure", "com.iqoo.secure.ui.dialog.FloatWindowPermissionDialog");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-                opened = true;
-            } catch (Exception ignored) {}
-        }
-
-        // 通用：Android 原生悬浮窗权限设置
-        if (!opened) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-                    intent.setData(Uri.parse("package:" + getContext().getPackageName()));
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    getContext().startActivity(intent);
-                    opened = true;
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 最终兜底：应用详情页
-        if (!opened) {
-            Toast.makeText(
-                getContext(),
-                "请在设置中开启：权限 → 悬浮窗 / 后台弹出界面",
-                Toast.LENGTH_LONG
-            ).show();
+            } else {
+                openAppSettingsPage();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "打开全屏通知权限设置失败", e);
             openAppSettingsPage();
         }
-
         call.resolve();
     }
 
@@ -554,21 +488,22 @@ public class PermissionPlugin extends Plugin {
         // 3. 通知权限
         result.put("notification", NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
 
-        // 4. 悬浮窗/后台弹出界面权限
-        boolean overlay;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            overlay = Settings.canDrawOverlays(getContext());
+        // 4. Android 14+ USE_FULL_SCREEN_INTENT 权限
+        boolean fullScreenIntent;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            NotificationManager notificationManager = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            fullScreenIntent = notificationManager != null && notificationManager.canUseFullScreenIntent();
         } else {
-            overlay = true;
+            fullScreenIntent = true;
         }
-        result.put("overlay", overlay);
+        result.put("fullScreenIntent", fullScreenIntent);
 
         // 5. 自启动权限（用户手动确认标记）
         android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
         result.put("autoStart", "true".equals(prefs.getString("autostart_confirmed", null)));
 
         // 总结
-        boolean allGranted = exactAlarm && batteryOpt && overlay;
+        boolean allGranted = exactAlarm && batteryOpt && fullScreenIntent;
         result.put("allGranted", allGranted);
         result.put("success", true);
 

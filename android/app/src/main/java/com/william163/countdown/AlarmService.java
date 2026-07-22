@@ -218,12 +218,12 @@ public class AlarmService extends Service {
     }
 
     /**
-     * 创建全屏闹钟通知，带有关闭按钮
-     * 通知的 contentIntent 和 fullScreenIntent 都指向 AlarmRingActivity
-     * 确保即使全屏界面被拦截，用户点击通知横幅也能进入闹钟关闭界面
+     * 创建全屏闹钟通知
+     * 使用系统认可的 FullScreenIntent 机制拉起全屏闹钟界面
+     * 不设置 setOngoing(true)，允许通知在用户关闭闹钟后自动消失
      */
     private Notification createNotification(String title, String content) {
-        // 点击通知也打开全屏闹钟界面（而非主界面，方便用户快速关闭闹钟）
+        // 点击通知也打开全屏闹钟界面
         Intent openIntent = new Intent(this, AlarmRingActivity.class);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         openIntent.putExtra("title", title);
@@ -248,8 +248,10 @@ public class AlarmService extends Service {
             .setContentIntent(openPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setOngoing(true)
+            .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setSound(null)
+            .setVibrate(null)
             .addAction(android.R.drawable.ic_media_pause, "关闭闹钟", stopPendingIntent);
 
         // 全屏意图 - 使用专门的响铃界面

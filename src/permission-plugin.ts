@@ -5,11 +5,11 @@ export interface PermissionCheckerPlugin {
   checkBatteryOptimization(): Promise<{ granted: boolean }>;
   checkNotificationPermission(): Promise<{ granted: boolean }>;
   checkAutoStartPermission(): Promise<{ granted: boolean }>;
-  checkOverlayPermission(): Promise<{ granted: boolean }>;
+  checkFullScreenIntentPermission(): Promise<{ granted: boolean }>;
   openAlarmSettings(): Promise<void>;
   openBatterySettings(): Promise<void>;
   openAutoStartSettings(): Promise<void>;
-  requestOverlayPermission(): Promise<void>;
+  requestFullScreenIntentPermission(): Promise<void>;
   openAppSettings(): Promise<void>;
   openUrl(options: { url: string }): Promise<void>;
   requestNotificationPermission(): Promise<void>;
@@ -21,11 +21,11 @@ export const PermissionChecker = registerPlugin<PermissionCheckerPlugin>('Permis
     checkBatteryOptimization: () => Promise.resolve({ granted: true }),
     checkNotificationPermission: () => Promise.resolve({ granted: true }),
     checkAutoStartPermission: () => Promise.resolve({ granted: true }),
-    checkOverlayPermission: () => Promise.resolve({ granted: true }),
+    checkFullScreenIntentPermission: () => Promise.resolve({ granted: true }),
     openAlarmSettings: () => Promise.resolve(),
     openBatterySettings: () => Promise.resolve(),
     openAutoStartSettings: () => Promise.resolve(),
-    requestOverlayPermission: () => Promise.resolve(),
+    requestFullScreenIntentPermission: () => Promise.resolve(),
     openAppSettings: () => Promise.resolve(),
     openUrl: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve(); },
     requestNotificationPermission: () => Promise.resolve(),

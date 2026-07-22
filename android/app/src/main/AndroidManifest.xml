@@ -101,7 +101,7 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
-        <!-- 闹钟响铃前台服务 - 保持声音和震动持续播放 -->
+        <!-- 闹钟响铃前台服务 - 使用全屏通知机制拉起闹钟界面 -->
         <service
             android:name=".AlarmService"
             android:enabled="true"
