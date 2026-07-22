@@ -154,6 +154,11 @@ async function checkAllPermissions() {
       allOk: missing.length === 0,
       missing
     };
+
+    // 如果有权限未开启，显示权限引导弹窗
+    if (missing.length > 0) {
+      showPermissionGuide.value = true;
+    }
   } catch (error) {
     console.error('检查权限失败:', error);
     permissionCheckResult.value = {
@@ -758,6 +763,9 @@ async function checkForUpdate(manualUrl?: string) {
   } else {
     showUpdateNotice.value = false;
     console.log('[Update] 已是最新版本，不显示更新提示');
+    // 显示"已是最新版本"提示
+    updateStatus.value = '当前已是最新版本';
+    showUpdateDialog.value = true;
   }
 }
 
