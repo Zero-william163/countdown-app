@@ -10,6 +10,7 @@ export interface PermissionCheckerPlugin {
   openBatterySettings(): Promise<void>;
   openAutoStartSettings(): Promise<void>;
   requestFullScreenIntentPermission(): Promise<void>;
+  openBackgroundPopupSettings(): Promise<void>;
   openAppSettings(): Promise<void>;
   openUrl(options: { url: string }): Promise<void>;
   requestNotificationPermission(): Promise<void>;
@@ -26,6 +27,7 @@ export const PermissionChecker = registerPlugin<PermissionCheckerPlugin>('Permis
     openBatterySettings: () => Promise.resolve(),
     openAutoStartSettings: () => Promise.resolve(),
     requestFullScreenIntentPermission: () => Promise.resolve(),
+    openBackgroundPopupSettings: () => Promise.resolve(),
     openAppSettings: () => Promise.resolve(),
     openUrl: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve(); },
     requestNotificationPermission: () => Promise.resolve(),

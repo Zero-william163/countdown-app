@@ -459,6 +459,85 @@ public class PermissionPlugin extends Plugin {
     }
 
     /**
+     * 打开后台弹出界面设置（华为/小米等厂商专属）
+     * 该权限是华为鸿蒙/EMUI系统的关键权限，关闭后闹钟只有声音没有界面
+     */
+    @PluginMethod
+    public void openBackgroundPopupSettings(PluginCall call) {
+        boolean opened = false;
+
+        // 华为鸿蒙/EMUI：后台弹出界面设置
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 华为方案2：权限管理页
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 小米 MIUI：后台弹出界面
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
+                intent.putExtra("extra_pkgname", getContext().getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // OPPO ColorOS：后台管理
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.permission.permissionmanager.AppPermissionSettingActivity");
+                intent.putExtra("package_name", getContext().getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // vivo OriginOS：后台弹出界面
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity");
+                intent.putExtra("packagename", getContext().getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception ignored) {}
+        }
+
+        // 兜底：打开应用详情页
+        if (!opened) {
+            Toast.makeText(
+                getContext(),
+                "请在应用设置中开启「后台弹出界面」或「悬浮窗」权限",
+                Toast.LENGTH_LONG
+            ).show();
+            openAppSettingsPage();
+        }
+
+        call.resolve();
+    }
+
+    /**
      * 检查所有闹钟相关权限是否就绪
      */
     @PluginMethod

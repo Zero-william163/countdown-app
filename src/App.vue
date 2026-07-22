@@ -239,6 +239,21 @@ async function openFullScreenIntentSettings() {
   }
 }
 
+// 打开后台弹出界面设置（华为/小米等厂商专属）
+async function openBackgroundPopupSettings() {
+  try {
+    // 华为：权限 → 后台弹出界面
+    await PermissionChecker.openBackgroundPopupSettings();
+  } catch (e) {
+    console.error('打开后台弹出设置失败:', e);
+    try {
+      await PermissionChecker.openAppSettings();
+    } catch (ee) {
+      console.log('打开应用设置失败:', ee);
+    }
+  }
+}
+
 // 关闭权限引导弹窗
 async function closePermissionGuide() {
   showPermissionGuide.value = false;
@@ -1513,6 +1528,18 @@ onUnmounted(() => {
             </div>
             <svg v-if="hasAutoStartPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+          </div>
+
+          <!-- 华为/小米等厂商：后台弹出界面权限 -->
+          <div class="permission-item" @click="openBackgroundPopupSettings">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>后台弹出界面</span>
+                <span class="perm-badge perm-badge-info">需手动开启</span>
+              </div>
+              <p class="permission-item-desc">华为/小米等手机必须开启，否则闹钟响了只有声音没有关闭界面</p>
+            </div>
+            <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
           <!-- 打开应用设置 -->
