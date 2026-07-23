@@ -38,6 +38,7 @@ const hasOverlayPermission = ref(true); // 悬浮窗权限（SYSTEM_ALERT_WINDOW
 const hasBackgroundPopupPermission = ref(false); // 厂商：后台弹出界面权限
 const hasLockScreenPermission = ref(false); // 厂商：锁屏显示权限
 const taskLocked = ref(false); // 多任务卡片是否已加锁
+const showAdvancedPerms = ref(false); // 是否展开高级权限
   const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
 const isCheckingUpdate = ref(false); // 是否正在检查更新
 const widgetPinned = ref(false); // 小组件是否已添加到桌面
@@ -79,20 +80,23 @@ async function requestNotificationPermission() {
   }
 }
 
-// 首次启动显示权限引导
+// 首次启动不弹权限引导，改为静默检查权限状态
 async function checkFirstLaunch() {
   try {
     const { value } = await Preferences.get({ key: FIRST_LAUNCH_KEY });
     if (!value) {
-      showPermissionGuide.value = true;
+      // 首次启动：静默检查权限，不弹窗
+      await checkAllPermissions();
+      await Preferences.set({ key: FIRST_LAUNCH_KEY, value: 'true' });
     }
   } catch (e) {
-    showPermissionGuide.value = true;
+    console.log('检查首次启动失败:', e);
   }
 }
 
 // 检查所有权限（更新状态显示用）
-async function checkAllPermissions() {
+// autoShowGuide: 如果为 true，检测到缺失权限时自动弹出引导弹窗
+async function checkAllPermissions(autoShowGuide = false) {
   isCheckingPermissions.value = true;
   permissionCheckResult.value = { checking: true, allOk: false, missing: [] };
 
@@ -194,8 +198,8 @@ async function checkAllPermissions() {
       missing
     };
 
-    // 如果有权限未开启，显示权限引导弹窗
-    if (missing.length > 0) {
+    // 如果有权限未开启且调用方要求自动弹引导，则弹出
+    if (missing.length > 0 && autoShowGuide) {
       showPermissionGuide.value = true;
     }
   } catch (error) {
@@ -350,12 +354,15 @@ async function confirmOverlayPermission() {
   await checkAllPermissions();
 }
 
-// 关闭权限引导弹窗
+// 关闭权限引导弹窗（不再调用 checkAllPermissions 避免死循环）
 async function closePermissionGuide() {
   showPermissionGuide.value = false;
   // 标记已看过引导
   await Preferences.set({ key: FIRST_LAUNCH_KEY, value: 'true' });
-  // 关闭后重新检查权限状态
+}
+
+// 刷新权限状态（仅在权限引导页内刷新，不会重新弹出引导）
+async function refreshPermissionStatus() {
   await checkAllPermissions();
 }
 
@@ -1388,28 +1395,28 @@ onUnmounted(() => {
               <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
             </svg>
             <span>所有权限已开启</span>
-            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
           </div>
           <div v-else-if="permissionCheckResult && !permissionCheckResult.allOk" class="permission-status warning">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
             </svg>
             <span>{{ permissionCheckResult.missing.length }} 项权限未开启</span>
-            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
           </div>
           <div v-else-if="hasPermission && hasExactAlarmPermission && hasBatteryOptimization" class="permission-status active">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
             </svg>
             <span>所有权限已开启</span>
-            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
           </div>
           <div v-else class="permission-status warning">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
             </svg>
             <span>权限不完整，点击检查</span>
-            <button class="check-permission-btn" @click="checkAllPermissions">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
           </div>
 
           <!-- 未开启权限列表 -->
@@ -1622,7 +1629,7 @@ onUnmounted(() => {
                   <path d="M9 6l6 6-6 6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
-              <div class="settings-item clickable" @click="checkAllPermissions">
+              <div class="settings-item clickable" @click="() => checkAllPermissions(true)">
                 <div class="item-icon permission-icon">
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22ZM18 16V11C18 7.93 16.37 5.36 13.5 4.68V4C13.5 3.17 12.83 2.5 12 2.5C11.17 2.5 10.5 3.17 10.5 4V4.68C7.64 5.36 6 7.92 6 11V16L4 18V19H20V18L18 16ZM16 17H8V11C8 8.52 9.49 6.5 12 6.5C14.51 6.5 16 8.52 16 11V17Z" fill="#667EEA"/>
@@ -1711,7 +1718,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 权限引导弹窗 - 首次启动始终显示 -->
-    <div v-if="showPermissionGuide" class="modal-overlay">
+    <div v-if="showPermissionGuide" class="modal-overlay" @click.self="closePermissionGuide">
       <div class="permission-guide-card">
         <!-- 标题部分（固定不滚动） -->
         <div class="permission-guide-header">
@@ -1721,12 +1728,16 @@ onUnmounted(() => {
             </svg>
           </div>
           <h3 class="permission-guide-title">权限设置</h3>
-          <p class="permission-guide-text">为确保闹钟准时响起，请逐一开启以下权限。点击每项可跳转到对应设置页面：</p>
+          <p class="permission-guide-text">为确保闹钟准时响起，请开启以下权限。点击每项可跳转到对应设置：</p>
         </div>
 
         <!-- 滚动区域（占据剩余空间） -->
         <div class="permission-guide-scroll">
           <div class="permission-guide-actions">
+
+          <!-- ===== 核心权限（必须开启） ===== -->
+          <div class="perm-section-label">核心权限</div>
+
           <!-- 通知权限 -->
           <div class="permission-item" @click="requestNotificationPermission">
             <div class="permission-item-info">
@@ -1735,7 +1746,7 @@ onUnmounted(() => {
                 <span v-if="hasPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">允许发送提醒通知，否则闹钟不会弹出</p>
+              <p class="permission-item-desc">闹钟提醒的基础，不开启则不会弹出通知</p>
             </div>
             <svg v-if="hasPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
@@ -1755,20 +1766,6 @@ onUnmounted(() => {
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
-          <!-- 电池优化 -->
-          <div class="permission-item" @click="openBatterySettings">
-            <div class="permission-item-info">
-              <div class="permission-item-name">
-                <span>关闭电池优化</span>
-                <span v-if="hasBatteryOptimization" class="perm-badge perm-badge-ok">已开启</span>
-                <span v-else class="perm-badge perm-badge-warn">未开启</span>
-              </div>
-              <p class="permission-item-desc">防止系统休眠时杀掉后台，确保闹钟准时提醒、小组件正常刷新</p>
-            </div>
-            <svg v-if="hasBatteryOptimization" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
-            <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
-          </div>
-
           <!-- 全屏通知权限（Android 14+） -->
           <div class="permission-item" @click="openFullScreenIntentSettings">
             <div class="permission-item-info">
@@ -1777,12 +1774,33 @@ onUnmounted(() => {
                 <span v-if="hasFullScreenIntentPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">Android 14+ 专用，允许闹钟在锁屏时直接亮屏弹出全屏界面</p>
+              <p class="permission-item-desc">锁屏时直接亮屏弹出闹钟界面（Android 14+）</p>
             </div>
             <svg v-if="hasFullScreenIntentPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
+          <!-- 电池优化 -->
+          <div class="permission-item" @click="openBatterySettings">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>关闭电池优化</span>
+                <span v-if="hasBatteryOptimization" class="perm-badge perm-badge-ok">已开启</span>
+                <span v-else class="perm-badge perm-badge-warn">未开启</span>
+              </div>
+              <p class="permission-item-desc">防止系统休眠时杀掉后台，确保闹钟准时响起</p>
+            </div>
+            <svg v-if="hasBatteryOptimization" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
+            <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+          </div>
+
+          <!-- ===== 高级优化（可选，折叠显示） ===== -->
+          <div class="perm-section-label perm-section-optional" @click="showAdvancedPerms = !showAdvancedPerms">
+            高级优化（可选）
+            <svg :style="{ transform: showAdvancedPerms ? 'rotate(180deg)' : '' }" style="width:16px;height:16px;transition:transform .2s" viewBox="0 0 24 24" fill="none"><path d="M7 10l5 5 5-5" stroke="#999" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+
+          <template v-if="showAdvancedPerms">
           <!-- 悬浮窗权限（SYSTEM_ALERT_WINDOW） -->
           <div class="permission-item" @click="openOverlaySettings">
             <div class="permission-item-info">
@@ -1791,11 +1809,10 @@ onUnmounted(() => {
                 <span v-if="hasOverlayPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">允许应用在其他应用上层显示，是后台拉起全屏界面的底层依赖</p>
+              <p class="permission-item-desc">允许在其他应用上层显示，是后台拉起界面的底层依赖</p>
               <div v-if="!hasOverlayPermission" class="permission-item-guide">
-                <p><span class="guide-step">操作路径：</span>设置 → 应用 → 权限管理 → 找到「倒计时提醒」→ 悬浮窗</p>
-                <p><span class="guide-hint">⚠️ 如果开关是灰色：请先退出"专注模式"、"驾驶模式"或"儿童模式"后重试</span></p>
-                <p><span class="guide-hint">💡 部分华为手机需先开启「后台弹出界面」权限后才能开启悬浮窗</span></p>
+                <p><span class="guide-step">操作路径：</span>设置 → 应用 → 权限管理 → 悬浮窗</p>
+                <p><span class="guide-hint">⚠️ 如果开关灰色：请先退出"专注模式"或"驾驶模式"</span></p>
               </div>
             </div>
             <svg v-if="hasOverlayPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
@@ -1810,17 +1827,13 @@ onUnmounted(() => {
                 <span v-if="hasAutoStartPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟、刷新桌面小组件</p>
-              <div class="permission-item-guide">
-                <p><span class="guide-step">操作路径：</span>设置 → 应用 → 应用启动管理 → 找到「倒计时提醒」→ 关闭「自动管理」→ 开启「允许自启动」</p>
-                <p><span class="guide-hint">💡 不同手机路径略有差异，跳转后按提示操作</span></p>
-              </div>
+              <p class="permission-item-desc">被杀死后台后仍能准时提醒</p>
             </div>
             <svg v-if="hasAutoStartPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
-          <!-- 华为/小米等厂商：后台弹出界面权限 -->
+          <!-- 后台弹出界面权限 -->
           <div class="permission-item" @click="openBackgroundPopupSettings">
             <div class="permission-item-info">
               <div class="permission-item-name">
@@ -1828,17 +1841,17 @@ onUnmounted(() => {
                 <span v-if="hasBackgroundPopupPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">华为/小米等手机必须开启，否则闹钟响了只有声音没有关闭界面</p>
-              <div class="permission-item-guide">
-                <p><span class="guide-step">操作路径：</span>设置 → 权限 → 后台弹出界面 → 找到「倒计时提醒」→ 开启</p>
-                <p><span class="guide-hint">💡 开启后返回本页面，点击右侧「已开启」按钮确认</span></p>
+              <p class="permission-item-desc">华为/小米等手机必须开启，否则闹钟只有声音没有界面</p>
+              <div v-if="!hasBackgroundPopupPermission" class="permission-item-guide">
+                <p><span class="guide-step">操作路径：</span>设置 → 权限 → 后台弹出界面 → 开启</p>
+                <p><span class="guide-hint">💡 开启后返回，点击右侧「已开启」确认</span></p>
               </div>
             </div>
             <svg v-if="hasBackgroundPopupPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <button v-else class="perm-confirm-btn" @click.stop="confirmBackgroundPopupPermission">已开启</button>
           </div>
 
-          <!-- 华为/小米等厂商：锁屏显示权限 -->
+          <!-- 锁屏显示权限 -->
           <div class="permission-item" @click="openBackgroundPopupSettings">
             <div class="permission-item-info">
               <div class="permission-item-name">
@@ -1846,30 +1859,30 @@ onUnmounted(() => {
                 <span v-if="hasLockScreenPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">允许闹钟在锁屏状态下直接显示全屏界面，华为/小米必须开启</p>
-              <div class="permission-item-guide">
-                <p><span class="guide-step">操作路径：</span>设置 → 通知 → 锁屏通知 → 允许通知/显示全部内容</p>
-                <p><span class="guide-step">或：</span>设置 → 权限 → 找到「倒计时提醒」→ 开启「锁屏显示」</p>
-                <p><span class="guide-hint">💡 开启后返回本页面，点击右侧「已开启」按钮确认</span></p>
+              <p class="permission-item-desc">允许闹钟在锁屏状态下直接显示全屏界面</p>
+              <div v-if="!hasLockScreenPermission" class="permission-item-guide">
+                <p><span class="guide-step">操作路径：</span>设置 → 通知 → 锁屏通知 → 显示全部内容</p>
+                <p><span class="guide-hint">💡 开启后返回，点击右侧「已开启」确认</span></p>
               </div>
             </div>
             <svg v-if="hasLockScreenPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <button v-else class="perm-confirm-btn" @click.stop="confirmLockScreenPermission">已开启</button>
           </div>
 
-          <!-- 多任务卡片加锁提示 -->
-          <div class="permission-item" style="background: #FFF8E1; border: 1px solid #FFE082;" @click="markTaskLocked">
+          <!-- 多任务卡片加锁提示（纯文字教程，无跳转） -->
+          <div class="permission-item permission-item-tip">
             <div class="permission-item-info">
               <div class="permission-item-name">
                 <span>多任务卡片加锁</span>
                 <span v-if="taskLocked" class="perm-badge perm-badge-ok">已完成</span>
-                <span v-else class="perm-badge perm-badge-info">重要</span>
+                <span v-else class="perm-badge perm-badge-info">需手动操作</span>
               </div>
-              <p class="permission-item-desc">从底部上滑进入多任务，按住本应用卡片向下滑动，直到出现🔒锁头图标，防止一键清理被杀</p>
+              <p class="permission-item-desc">从底部上滑进入多任务界面，按住本应用卡片向下滑动，直到出现🔒锁头图标，防止一键清理被杀</p>
             </div>
-            <svg v-if="taskLocked" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
-            <button v-else class="perm-confirm-btn" @click.stop="markTaskLocked">已完成</button>
+            <button v-if="!taskLocked" class="perm-confirm-btn" @click.stop="markTaskLocked">已完成</button>
+            <svg v-else class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
           </div>
+          </template>
 
           <!-- 打开应用设置 -->
           <div class="permission-item" @click="openAppSettingsPage">
@@ -1886,9 +1899,8 @@ onUnmounted(() => {
 
         <!-- 底部按钮（固定在卡片底部，不滚动） -->
         <div class="permission-guide-footer">
-          <div v-if="allPermissionsGranted" style="width:100%;color:#28C76F;font-size:13px;margin-bottom:8px;font-weight:600;">✓ 所有权限已开启</div>
-          <button class="btn btn-permission-secondary" @click="checkAllPermissions">刷新状态</button>
-          <button class="btn btn-permission-primary" @click="closePermissionGuide">已完成设置</button>
+          <button class="btn btn-permission-secondary" @click="refreshPermissionStatus">刷新状态</button>
+          <button class="btn btn-permission-primary" @click="closePermissionGuide">完成</button>
         </div>
       </div>
     </div>
@@ -2874,6 +2886,31 @@ body {
   font-size: 13px;
   color: #8E8E93;
   line-height: 1.4;
+}
+
+.perm-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 12px 0 6px;
+  padding-left: 4px;
+}
+
+.perm-section-optional {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: #9CA3AF;
+}
+
+.permission-item-tip {
+  background: #FFF8E1 !important;
+  border: 1px solid #FFE082 !important;
+  cursor: default !important;
 }
 
 .perm-badge {
