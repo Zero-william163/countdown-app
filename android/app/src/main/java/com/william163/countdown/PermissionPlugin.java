@@ -93,6 +93,77 @@ public class PermissionPlugin extends Plugin {
         call.resolve(result);
     }
 
+    /**
+     * 检查悬浮窗权限（SYSTEM_ALERT_WINDOW）
+     * 标准系统 API：Settings.canDrawOverlays()，Android 6+ 可实时准确检查
+     * 该权限是部分厂商（华为/小米）后台拉起界面的底层依赖
+     */
+    @PluginMethod
+    public void checkOverlayPermission(PluginCall call) {
+        JSObject result = new JSObject();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            result.put("granted", Settings.canDrawOverlays(getContext()));
+        } else {
+            result.put("granted", true);
+        }
+        call.resolve(result);
+    }
+
+    /**
+     * 检查华为/小米等厂商的"后台弹出界面"权限
+     * 厂商专属权限，无公开 API，采用与自启动权限一致的手动确认标记方案
+     * 用户在前端开启后点击"已开启"按钮写入标记，下次检查读取该标记
+     */
+    @PluginMethod
+    public void checkBackgroundPopupPermission(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        String confirmedStr = prefs.getString("bg_popup_confirmed", null);
+        boolean confirmed = "true".equals(confirmedStr);
+        JSObject result = new JSObject();
+        result.put("granted", confirmed);
+        call.resolve(result);
+    }
+
+    /**
+     * 标记"后台弹出界面"权限为已开启（用户手动确认）
+     */
+    @PluginMethod
+    public void confirmBackgroundPopupPermission(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        prefs.edit().putString("bg_popup_confirmed", "true").apply();
+        JSObject result = new JSObject();
+        result.put("granted", true);
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    /**
+     * 检查华为/小米等厂商的"锁屏显示"权限
+     * 厂商专属权限，无公开 API，采用手动确认标记方案
+     */
+    @PluginMethod
+    public void checkLockScreenPermission(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        String confirmedStr = prefs.getString("lockscreen_confirmed", null);
+        boolean confirmed = "true".equals(confirmedStr);
+        JSObject result = new JSObject();
+        result.put("granted", confirmed);
+        call.resolve(result);
+    }
+
+    /**
+     * 标记"锁屏显示"权限为已开启（用户手动确认）
+     */
+    @PluginMethod
+    public void confirmLockScreenPermission(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        prefs.edit().putString("lockscreen_confirmed", "true").apply();
+        JSObject result = new JSObject();
+        result.put("granted", true);
+        result.put("success", true);
+        call.resolve(result);
+    }
+
     @PluginMethod
     public void openAutoStartSettings(PluginCall call) {
         boolean opened = false;
@@ -459,6 +530,28 @@ public class PermissionPlugin extends Plugin {
     }
 
     /**
+     * 打开悬浮窗权限设置页（SYSTEM_ALERT_WINDOW）
+     * 标准系统 API，所有 Android 6+ 设备通用
+     */
+    @PluginMethod
+    public void openOverlaySettings(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+                intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            } else {
+                openAppSettingsPage();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "打开悬浮窗权限设置失败", e);
+            openAppSettingsPage();
+        }
+        call.resolve();
+    }
+
+    /**
      * 打开后台弹出界面设置（华为/小米等厂商专属）
      * 该权限是华为鸿蒙/EMUI系统的关键权限，关闭后闹钟只有声音没有界面
      */
@@ -579,10 +672,30 @@ public class PermissionPlugin extends Plugin {
 
         // 5. 自启动权限（用户手动确认标记）
         android.content.SharedPreferences prefs = getContext().getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
-        result.put("autoStart", "true".equals(prefs.getString("autostart_confirmed", null)));
+        boolean autoStart = "true".equals(prefs.getString("autostart_confirmed", null));
+        result.put("autoStart", autoStart);
 
-        // 总结
-        boolean allGranted = exactAlarm && batteryOpt && fullScreenIntent;
+        // 6. 悬浮窗权限（标准 API 可实时检查）
+        boolean overlay;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            overlay = Settings.canDrawOverlays(getContext());
+        } else {
+            overlay = true;
+        }
+        result.put("overlay", overlay);
+
+        // 7. 后台弹出界面权限（厂商专属，手动确认标记）
+        boolean bgPopup = "true".equals(prefs.getString("bg_popup_confirmed", null));
+        result.put("backgroundPopup", bgPopup);
+
+        // 8. 锁屏显示权限（厂商专属，手动确认标记）
+        boolean lockScreen = "true".equals(prefs.getString("lockscreen_confirmed", null));
+        result.put("lockScreen", lockScreen);
+
+        // 总结：所有权限都必须开启
+        boolean allGranted = exactAlarm && batteryOpt && fullScreenIntent
+            && NotificationManagerCompat.from(getContext()).areNotificationsEnabled()
+            && autoStart && overlay && bgPopup && lockScreen;
         result.put("allGranted", allGranted);
         result.put("success", true);
 

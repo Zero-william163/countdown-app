@@ -34,6 +34,9 @@ const updateStatus = ref('');
 const showUpdateDialog = ref(false);
 const hasAutoStartPermission = ref(false); // 自启动权限
 const hasFullScreenIntentPermission = ref(true); // Android 14+ 全屏通知权限
+const hasOverlayPermission = ref(true); // 悬浮窗权限（SYSTEM_ALERT_WINDOW）
+const hasBackgroundPopupPermission = ref(false); // 厂商：后台弹出界面权限
+const hasLockScreenPermission = ref(false); // 厂商：锁屏显示权限
   const autoStartSettingsOpened = ref(false); // 是否刚刚打开过自启动设置
 const isCheckingUpdate = ref(false); // 是否正在检查更新
 const widgetPinned = ref(false); // 小组件是否已添加到桌面
@@ -141,6 +144,30 @@ async function checkAllPermissions() {
       console.log('检查全屏通知权限失败:', e);
     }
 
+    // 检查悬浮窗权限（SYSTEM_ALERT_WINDOW，标准 API 可实时检查）
+    try {
+      const overlayResult = await PermissionChecker.checkOverlayPermission();
+      hasOverlayPermission.value = overlayResult.granted;
+    } catch (e) {
+      console.log('检查悬浮窗权限失败:', e);
+    }
+
+    // 检查厂商"后台弹出界面"权限（手动确认标记）
+    try {
+      const bgPopupResult = await PermissionChecker.checkBackgroundPopupPermission();
+      hasBackgroundPopupPermission.value = bgPopupResult.granted;
+    } catch (e) {
+      console.log('检查后台弹出界面权限失败:', e);
+    }
+
+    // 检查厂商"锁屏显示"权限（手动确认标记）
+    try {
+      const lockScreenResult = await PermissionChecker.checkLockScreenPermission();
+      hasLockScreenPermission.value = lockScreenResult.granted;
+    } catch (e) {
+      console.log('检查锁屏显示权限失败:', e);
+    }
+
     // 收集未开启的权限
     const missing: string[] = [];
     if (!hasPermission.value) missing.push('通知权限');
@@ -148,6 +175,9 @@ async function checkAllPermissions() {
     if (!hasBatteryOptimization.value) missing.push('电池优化');
     if (!hasAutoStartPermission.value) missing.push('自启动权限');
     if (!hasFullScreenIntentPermission.value) missing.push('全屏通知权限');
+    if (!hasOverlayPermission.value) missing.push('悬浮窗权限');
+    if (!hasBackgroundPopupPermission.value) missing.push('后台弹出界面');
+    if (!hasLockScreenPermission.value) missing.push('锁屏显示');
 
     permissionCheckResult.value = {
       checking: false,
@@ -175,7 +205,8 @@ async function checkAllPermissions() {
 const allPermissionsGranted = computed(() => {
   return hasPermission.value && hasExactAlarmPermission.value &&
          hasBatteryOptimization.value && hasAutoStartPermission.value &&
-         hasFullScreenIntentPermission.value;
+         hasFullScreenIntentPermission.value && hasOverlayPermission.value &&
+         hasBackgroundPopupPermission.value && hasLockScreenPermission.value;
 });
 
 // 打开精确闹钟设置
@@ -244,7 +275,22 @@ async function openFullScreenIntentSettings() {
   }
 }
 
+// 打开悬浮窗权限设置（SYSTEM_ALERT_WINDOW）
+async function openOverlaySettings() {
+  try {
+    await PermissionChecker.openOverlaySettings();
+  } catch (e) {
+    console.error('打开悬浮窗设置失败:', e);
+    try {
+      await PermissionChecker.openAppSettings();
+    } catch (ee) {
+      console.log('打开应用设置失败:', ee);
+    }
+  }
+}
+
 // 打开后台弹出界面设置（华为/小米等厂商专属）
+// 厂商无统一 API，跳转后用户手动开启，返回 App 时通过 onResume 重新检查
 async function openBackgroundPopupSettings() {
   try {
     // 华为：权限 → 后台弹出界面
@@ -256,6 +302,28 @@ async function openBackgroundPopupSettings() {
     } catch (ee) {
       console.log('打开应用设置失败:', ee);
     }
+  }
+}
+
+// 用户手动确认"后台弹出界面"权限已开启（厂商无 API，靠手动确认标记）
+async function confirmBackgroundPopupPermission() {
+  try {
+    await PermissionChecker.confirmBackgroundPopupPermission();
+    hasBackgroundPopupPermission.value = true;
+    await checkAllPermissions();
+  } catch (e) {
+    console.error('确认后台弹出界面权限失败:', e);
+  }
+}
+
+// 用户手动确认"锁屏显示"权限已开启
+async function confirmLockScreenPermission() {
+  try {
+    await PermissionChecker.confirmLockScreenPermission();
+    hasLockScreenPermission.value = true;
+    await checkAllPermissions();
+  } catch (e) {
+    console.error('确认锁屏显示权限失败:', e);
   }
 }
 
@@ -689,73 +757,126 @@ function parseVersionData(responseData: any): { version: string; apkUrl: string 
   return null;
 }
 
-// 检查更新 - 多源检测，确保国内网络可访问
+// 检查更新 - 多源并行检测，确保国内网络可访问
 // 发布新版本时，只需在GitHub创建Release并上传APK，所有旧版本自动检测到更新
 async function checkForUpdate(manualUrl?: string) {
   const cacheBuster = '?' + Date.now();
 
-  const UPDATE_SOURCES = [
+  // 按速度分组：CDN类最快，raw类次之，API类最慢
+  const CDN_SOURCES = [
     'https://cdn.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
     'https://fastly.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
     'https://gcore.jsdelivr.net/gh/Zero-william163/countdown-app@main/version.json',
+    'https://jsd.onmicrosoft.cn/gh/Zero-william163/countdown-app@main/version.json',
+    'https://jsdelivr.b-cdn.net/gh/Zero-william163/countdown-app@main/version.json',
+  ];
+  const RAW_SOURCES = [
     'https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
     'https://raw.fastgit.org/Zero-william163/countdown-app/main/version.json',
+    'https://ghproxy.com/https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
+    'https://gh-proxy.com/https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
+    'https://mirror.ghproxy.com/https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
+    'https://gh.api.99988866.xyz/https://raw.githubusercontent.com/Zero-william163/countdown-app/main/version.json',
+  ];
+  const API_SOURCES = [
     'https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
-    'https://gh-proxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest'
+    'https://gh-proxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
+    'https://ghproxy.com/https://api.github.com/repos/Zero-william163/countdown-app/releases/latest',
   ];
 
-  const urls = manualUrl ? [manualUrl, ...UPDATE_SOURCES] : UPDATE_SOURCES;
+  const allSources = [...CDN_SOURCES, ...RAW_SOURCES, ...API_SOURCES];
+  const urls = manualUrl ? [manualUrl, ...allSources] : allSources;
 
   let foundVersion = '';
   let foundApkUrl = '';
+  let completedCount = 0;
+  const totalCount = urls.length;
 
-  for (const url of urls) {
-    try {
-      const requestUrl = url.includes('api.github.com') ? url : url + cacheBuster;
-      console.log('[Update] 正在请求更新源:', requestUrl);
-      const isGithubApi = url.includes('api.github.com');
-      const response = await CapacitorHttp.get({
-        url: requestUrl,
-        headers: isGithubApi ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {},
-        connectTimeout: 8000,
-        readTimeout: 10000
-      } as any);
-      console.log('[Update] 响应状态:', response.status);
+  // 并行请求所有源，第一个成功就设置结果，不等待全部完成
+  const promises = urls.map(url => new Promise<void>((resolve) => {
+    const requestUrl = url.includes('api.github.com') || url.includes('npmmirror') ? url : url + cacheBuster;
+    const isGithubApi = url.includes('api.github.com');
+    const isNpmMirror = url.includes('npmmirror');
+
+    CapacitorHttp.get({
+      url: requestUrl,
+      headers: isGithubApi ? { 'Accept': 'application/vnd.github+json', 'User-Agent': 'countdown-app' } : {},
+      connectTimeout: 5000,
+      readTimeout: 8000
+    } as any).then((response: any) => {
+      console.log('[Update] 源响应:', url, '状态:', response.status);
       if (response.status === 200 && response.data) {
-        console.log('[Update] 响应数据:', typeof response.data === 'string' ? response.data : JSON.stringify(response.data).substring(0, 500) + '...');
-        const parsed = parseVersionData(response.data);
-        console.log('[Update] 解析结果:', parsed);
+        let parsed = null;
+        if (isNpmMirror) {
+          // npmmirror 返回 npm 包信息，version 在顶层
+          const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+          if (data.version) {
+            parsed = {
+              version: data.version,
+              apkUrl: `https://github.com/Zero-william163/countdown-app/releases/download/v${data.version}/countdown-${data.version}.apk`
+            };
+          }
+        } else {
+          parsed = parseVersionData(response.data);
+        }
         if (parsed) {
           if (!foundVersion || compareVersions(parsed.version, foundVersion)) {
-            console.log('[Update] 发现更高版本:', parsed.version, '替换旧版本:', foundVersion || '无');
+            console.log('[Update] 发现版本:', parsed.version, '源:', url);
             foundVersion = parsed.version;
             foundApkUrl = parsed.apkUrl;
-          } else {
-            console.log('[Update] 当前版本', parsed.version, '低于已发现版本', foundVersion, '跳过');
           }
         }
       }
-    } catch (e) {
-      console.log('[Update] 检查更新源失败:', url, e);
-    }
-  }
+      completedCount++;
+      resolve();
+    }).catch((e: any) => {
+      console.log('[Update] 源失败:', url, e?.message || e);
+      completedCount++;
+      resolve();
+    });
+  }));
+
+  // 竞速策略：只要有一个源成功且发现更新，就立即返回
+  // 但也设置一个保底等待时间，确保至少尝试几个源
+  let resolved = false;
+
+  const resultPromise = new Promise<void>((resolve) => {
+    const checkInterval = setInterval(() => {
+      // 至少完成 3 个源，或者已等待 3 秒，或者全部完成
+      if (completedCount >= 3 || (foundVersion && compareVersions(foundVersion, appVersion.value)) || completedCount >= totalCount) {
+        clearInterval(checkInterval);
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      }
+    }, 200);
+
+    // 最长等待 12 秒
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    }, 12000);
+  });
+
+  await Promise.race([Promise.all(promises), resultPromise]);
 
   latestVersion.value = foundVersion;
   latestApkUrl.value = foundApkUrl;
 
   isCheckingUpdate.value = false;
 
-  console.log('[Update] 检查完成: 发现版本=' + foundVersion + ', 当前版本=' + appVersion.value);
+  console.log('[Update] 检查完成: 发现版本=' + foundVersion + ', 当前版本=' + appVersion.value + ', 完成源数=' + completedCount + '/' + totalCount);
   console.log('[Update] 版本比较结果: compareVersions(' + foundVersion + ', ' + appVersion.value + ') = ' + compareVersions(foundVersion, appVersion.value));
 
   if (foundVersion && compareVersions(foundVersion, appVersion.value)) {
-    // 检查是否已经下载过该版本（避免重复下载）
     const downloadedVersion = localStorage.getItem(DOWNLOADED_VERSION_KEY);
     if (downloadedVersion === foundVersion) {
-      // 已下载但未安装，提示用户安装而不是重新下载
       console.log('[Update] 新版本已下载，等待安装:', foundVersion);
-      showUpdateNotice.value = false; // 不显示顶部更新提示条
-      // 显示安装提示对话框
+      showUpdateNotice.value = false;
       updateStatus.value = `新版本 v${foundVersion} 已下载完成，请点击安装`;
       showUpdateDialog.value = true;
       isUpdating.value = false;
@@ -765,10 +886,13 @@ async function checkForUpdate(manualUrl?: string) {
     }
   } else {
     showUpdateNotice.value = false;
-    console.log('[Update] 已是最新版本，不显示更新提示');
-    // 显示"已是最新版本"提示
-    updateStatus.value = '当前已是最新版本';
-    showUpdateDialog.value = true;
+    if (foundVersion && !compareVersions(foundVersion, appVersion.value)) {
+      console.log('[Update] 已是最新版本');
+      updateStatus.value = '当前已是最新版本';
+      showUpdateDialog.value = true;
+    } else {
+      console.log('[Update] 未能获取版本信息（所有源失败或返回空）');
+    }
   }
 }
 
@@ -804,7 +928,7 @@ async function manualCheckUpdate() {
   if (isCheckingUpdate.value) return;
 
   isCheckingUpdate.value = true;
-  updateStatus.value = '正在检查更新...\n（尝试多个源，可能需要 10-20 秒）';
+  updateStatus.value = '正在检查更新...\n（多源并行检测，约 3-8 秒）';
   showUpdateDialog.value = true;
 
   try {
@@ -818,8 +942,7 @@ async function manualCheckUpdate() {
       }
       isUpdating.value = false;
     } else if (!latestVersion.value) {
-      // 没检测到任何版本，说明所有源都失败了
-      updateStatus.value = '检查更新失败\n\n可能原因：\n1. 网络连接不稳定\n2. GitHub 暂时无法访问\n\n请稍后重试，或手动到 GitHub 下载：\ngithub.com/Zero-william163/countdown-app/releases';
+      updateStatus.value = '检查更新失败\n\n可能原因：\n1. 网络连接不稳定\n2. 当前网络环境无法访问更新源\n\n请稍后重试，或手动下载最新版：\ngithub.com/Zero-william163/countdown-app/releases';
       isUpdating.value = false;
     } else {
       updateStatus.value = `已是最新版本 (v${appVersion.value})`;
@@ -833,7 +956,6 @@ async function manualCheckUpdate() {
     isUpdating.value = false;
     console.error('[Update] 手动检查更新失败:', e);
   } finally {
-    // 确保按钮始终可以再次点击
     isCheckingUpdate.value = false;
   }
 }
@@ -976,6 +1098,15 @@ function openGearSettings() {
   loadCurrentRingtone();
 }
 
+// 打开GitHub仓库
+async function openGithubRepo() {
+  try {
+    await PermissionChecker.openUrl({ url: 'https://github.com/Zero-william163/countdown-app' });
+  } catch (e) {
+    console.log('打开GitHub失败:', e);
+  }
+}
+
 // 关闭齿轮设置
 function closeGearSettings() {
   showGearSettings.value = false;
@@ -1002,6 +1133,15 @@ async function openPermissionSetting(permName: string) {
         break;
       case '全屏通知权限':
         await PermissionChecker.requestFullScreenIntentPermission();
+        break;
+      case '悬浮窗权限':
+        await PermissionChecker.openOverlaySettings();
+        break;
+      case '后台弹出界面':
+        await PermissionChecker.openBackgroundPopupSettings();
+        break;
+      case '锁屏显示':
+        await PermissionChecker.openBackgroundPopupSettings();
         break;
       default:
         await PermissionChecker.openAppSettings();
@@ -1111,8 +1251,7 @@ onMounted(async () => {
             } else {
               autoStartSettingsOpened.value = false;
             }
-            if (showPermissionGuide.value && hasPermission.value && hasExactAlarmPermission.value &&
-                hasBatteryOptimization.value && hasAutoStartPermission.value) {
+            if (showPermissionGuide.value && allPermissionsGranted.value) {
               showPermissionGuide.value = false;
               await Preferences.set({ key: FIRST_LAUNCH_KEY, value: 'true' });
             }
@@ -1373,71 +1512,165 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 齿轮设置弹窗（仅版本号+检查更新） -->
+    <!-- 设置页面 -->
     <div v-if="showGearSettings" class="modal-overlay" @click.self="closeGearSettings">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>设置</h3>
-          <button class="modal-close" @click="closeGearSettings">
+      <div class="settings-page">
+        <div class="settings-header">
+          <button class="settings-back-btn" @click="closeGearSettings">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill="#999"/>
+              <path d="M15.41 7.41L14 6L8 12L14 18L15.41 16.59L10.83 12L15.41 7.41Z" fill="#1A1A2E"/>
             </svg>
           </button>
+          <h2 class="settings-title">设置</h2>
+          <div class="settings-header-placeholder"></div>
         </div>
 
-        <div class="modal-body">
-          <!-- 闹钟铃声设置 -->
-          <div class="form-group">
-            <label>闹钟铃声</label>
-            <div class="ringtone-picker">
-              <div class="ringtone-info" @click="pickRingtone">
-                <span class="ringtone-icon-text">{{ currentRingtone.isCustom ? '🎵' : '🔔' }}</span>
-                <span class="ringtone-name">{{ currentRingtone.name }}</span>
+        <div class="settings-content">
+          <!-- 应用信息 -->
+          <div class="settings-section">
+            <h3 class="section-title">应用信息</h3>
+            <div class="settings-card">
+              <div class="settings-item">
+                <div class="item-icon app-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22ZM18 16V11C18 7.93 16.37 5.36 13.5 4.68V4C13.5 3.17 12.83 2.5 12 2.5C11.17 2.5 10.5 3.17 10.5 4V4.68C7.64 5.36 6 7.92 6 11V16L4 18V19H20V18L18 16ZM16 17H8V11C8 8.52 9.49 6.5 12 6.5C14.51 6.5 16 8.52 16 11V17Z" fill="#2B7FFF"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">应用名称</div>
+                  <div class="item-value">倒计时提醒</div>
+                </div>
               </div>
-              <button v-if="currentRingtone.isCustom" class="reset-ringtone-btn" @click="resetRingtone">恢复默认</button>
+              <div class="settings-item">
+                <div class="item-icon version-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM18 20H6V4H13V9H18V20Z" fill="#999"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">当前版本</div>
+                  <div class="item-value">v{{ appVersion }}</div>
+                </div>
+              </div>
             </div>
-            <p class="ringtone-hint">点击选择本地音乐作为铃声，支持 MP3/WAV/M4A/AAC/OGG/FLAC</p>
           </div>
 
-          <!-- 小组件设置 -->
-          <div class="form-group">
-            <label>桌面小组件</label>
-            <div class="widget-info">
-              <div class="widget-status">
-                <span v-if="widgetPinned" class="widget-badge widget-badge-ok">
-                  已添加 ({{ widgetCount }}个)
-                </span>
-                <span v-else class="widget-badge widget-badge-warn">未添加</span>
-              </div>
-              <button
-                class="btn-widget-action"
-                @click="requestAddWidget"
-              >
+          <!-- 更新 -->
+          <div class="settings-section">
+            <h3 class="section-title">更新</h3>
+            <div class="settings-card update-card">
+              <div class="update-icon">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" fill="#28C76F"/>
+                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C9.79 4 7.8 4.9 6.35 6.35C4.9 7.8 4 9.79 4 12C4 14.21 4.9 16.2 6.35 17.65C7.8 19.1 9.79 20 12 20C14.21 20 16.2 19.1 17.65 17.65C19.1 16.2 20 14.21 20 12C20 9.79 19.1 7.8 17.65 6.35ZM12 18C9.79 18 8 16.21 8 14C8 11.79 9.79 10 12 10C14.21 10 16 11.79 16 14C16 16.21 14.21 18 12 18ZM13 7H11V13L16.25 16.15L17 14.92L13 12.25V7Z" fill="#FF6B6B"/>
                 </svg>
-                <span>添加小组件</span>
-              </button>
-            </div>
-            <p class="widget-hint">在桌面显示倒计时，方便随时查看</p>
-          </div>
-
-          <!-- 版本设置 -->
-          <div class="form-group">
-            <label>当前版本</label>
-            <div class="version-info">
-              <span class="version-current">v{{ appVersion }}</span>
+              </div>
+              <div class="update-info">
+                <div class="update-name">检查更新</div>
+                <div class="update-desc">点击检查新版本</div>
+              </div>
               <button
-                class="btn-check-update"
+                class="btn-check-update-new"
                 @click="manualCheckUpdate"
                 :disabled="isCheckingUpdate"
               >
                 <svg v-if="!isCheckingUpdate" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C9.79 4 7.8 4.9 6.35 6.35C4.9 7.8 4 9.79 4 12C4 14.21 4.9 16.2 6.35 17.65C7.8 19.1 9.79 20 12 20C14.21 20 16.2 19.1 17.65 17.65C19.1 16.2 20 14.21 20 12C20 9.79 19.1 7.8 17.65 6.35ZM12 18C9.79 18 8 16.21 8 14C8 11.79 9.79 10 12 10C14.21 10 16 11.79 16 14C16 16.21 14.21 18 12 18ZM13 7H11V13L16.25 16.15L17 14.92L13 12.25V7Z" fill="#2B7FFF"/>
+                  <path d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" fill="white"/>
                 </svg>
-                <span>{{ isCheckingUpdate ? '检查中...' : '检查更新' }}</span>
+                <span>{{ isCheckingUpdate ? '检查中...' : '检查' }}</span>
               </button>
             </div>
+          </div>
+
+          <!-- 功能设置 -->
+          <div class="settings-section">
+            <h3 class="section-title">功能设置</h3>
+            <div class="settings-card">
+              <div class="settings-item clickable" @click="pickRingtone">
+                <div class="item-icon ringtone-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3C7.46 3 3.34 4.78 0.29 7.67C0.11 7.85 0 8.08 0 8.3V15.7C0 15.92 0.11 16.15 0.29 16.33L3 19V20C3 20.55 3.45 21 4 21H5C5.55 21 6 20.55 6 20V19L8.67 16.33C8.85 16.15 9 15.92 9 15.7V14C9 10.13 12.13 7 16 7H17C17.55 7 18 7.45 18 8V9H20C20.55 9 21 9.45 21 10V14C21 14.55 20.55 15 20 15H18V15.7C18 15.92 17.89 16.15 17.71 16.33L12 22L6.29 16.33C6.11 16.15 6 15.92 6 15.7V14C6 10.69 8.69 8 12 8C12.55 8 13 8.45 13 9V11H16C18.76 11 21 13.24 21 16V17C21 17.55 20.55 18 20 18H18V19L12 24L6 19V18H4C3.45 18 3 17.55 3 17V16C3 12.76 5.24 10 8 10H9V8C9 5.24 11.24 3 14 3H12Z" fill="#FF9500"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">闹钟铃声</div>
+                  <div class="item-value">{{ currentRingtone.name }}</div>
+                </div>
+                <svg class="item-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 6l6 6-6 6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="settings-item clickable" @click="checkAllPermissions">
+                <div class="item-icon permission-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22ZM18 16V11C18 7.93 16.37 5.36 13.5 4.68V4C13.5 3.17 12.83 2.5 12 2.5C11.17 2.5 10.5 3.17 10.5 4V4.68C7.64 5.36 6 7.92 6 11V16L4 18V19H20V18L18 16ZM16 17H8V11C8 8.52 9.49 6.5 12 6.5C14.51 6.5 16 8.52 16 11V17Z" fill="#667EEA"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">权限检查</div>
+                  <div class="item-value">
+                    <span v-if="isCheckingPermissions">检查中...</span>
+                    <span v-else-if="permissionCheckResult?.allOk" class="perm-ok-text">所有权限已开启</span>
+                    <span v-else class="perm-warn-text">{{ permissionCheckResult?.missing.length || '部分' }}项权限未开启</span>
+                  </div>
+                </div>
+                <svg class="item-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 6l6 6-6 6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="settings-item clickable" @click="requestAddWidget">
+                <div class="item-icon widget-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 3H21V7H3V3ZM3 9H21V13H3V9ZM3 15H21V19H3V15Z" fill="#28C76F"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">桌面小组件</div>
+                  <div class="item-value">
+                    <span v-if="widgetPinned">已添加 ({{ widgetCount }}个)</span>
+                    <span v-else>未添加</span>
+                  </div>
+                </div>
+                <svg class="item-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 6l6 6-6 6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- 关于 -->
+          <div class="settings-section">
+            <h3 class="section-title">关于</h3>
+            <div class="settings-card">
+              <div class="settings-item clickable" @click="openGithubRepo">
+                <div class="item-icon github-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 0C5.373 0 0 5.373 0 12C0 17.302 3.438 21.802 8.207 23.387C8.806 23.517 9.021 23.023 9.021 22.607C9.021 22.269 9.017 21.084 9.017 20.084C9.017 18.369 7.343 17.862 6.308 17.507C6.102 17.417 5.803 17.062 5.606 16.665C5.606 16.426 5.706 16.217 5.863 16.074C4.388 15.838 2.988 14.861 2.988 13.366C2.988 12.387 3.481 11.544 4.122 10.986C4.056 10.832 3.903 10.247 4.099 9.603C4.099 9.603 4.318 8.881 4.893 7.77C4.893 7.77 5.546 7.493 6.538 8.596C7.188 8.359 7.911 8.231 8.655 8.231C9.399 8.231 10.123 8.359 10.773 8.596C11.765 7.493 12.418 7.77 12.418 7.77C12.993 8.881 13.212 9.603 13.212 9.603C13.408 10.247 13.255 10.832 13.189 10.986C13.83 11.544 14.323 12.387 14.323 13.366C14.323 14.861 12.923 15.838 11.448 16.074C11.605 16.217 11.705 16.426 11.705 16.665C11.705 17.062 11.406 17.417 11.2 17.507C10.165 17.862 8.491 18.369 8.491 20.084C8.491 21.084 8.487 22.269 8.487 22.607C8.487 23.023 8.702 23.517 9.301 23.387C14.062 21.802 17.5 17.302 17.5 12C17.5 5.373 12.127 0 12 0Z" fill="#333"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">GitHub 仓库</div>
+                  <div class="item-value">github.com/Zero-william163/countdown-app</div>
+                </div>
+                <svg class="item-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 6l6 6-6 6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="settings-item">
+                <div class="item-icon license-icon">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2ZM2 17L12 22L22 17V13L12 18L2 13V17Z" fill="#999"/>
+                  </svg>
+                </div>
+                <div class="item-info">
+                  <div class="item-name">开源协议</div>
+                  <div class="item-value">MIT License</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <p>倒计时提醒 v{{ appVersion }}</p>
           </div>
         </div>
       </div>
@@ -1527,6 +1760,20 @@ onUnmounted(() => {
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
           </div>
 
+          <!-- 悬浮窗权限（SYSTEM_ALERT_WINDOW） -->
+          <div class="permission-item" @click="openOverlaySettings">
+            <div class="permission-item-info">
+              <div class="permission-item-name">
+                <span>悬浮窗权限</span>
+                <span v-if="hasOverlayPermission" class="perm-badge perm-badge-ok">已开启</span>
+                <span v-else class="perm-badge perm-badge-warn">未开启</span>
+              </div>
+              <p class="permission-item-desc">允许应用在其他应用上层显示，是后台拉起全屏界面的底层依赖</p>
+            </div>
+            <svg v-if="hasOverlayPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
+            <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+          </div>
+
           <!-- 自启动权限 -->
           <div class="permission-item" @click="openAutoStartSettings">
             <div class="permission-item-info">
@@ -1535,7 +1782,11 @@ onUnmounted(() => {
                 <span v-if="hasAutoStartPermission" class="perm-badge perm-badge-ok">已开启</span>
                 <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
-              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟、刷新桌面小组件（跳转后请手动确认）</p>
+              <p class="permission-item-desc">杀死后台后仍能准时提醒闹钟、刷新桌面小组件</p>
+              <div class="permission-item-guide">
+                <p><span class="guide-step">操作路径：</span>设置 → 应用 → 应用启动管理 → 找到「倒计时提醒」→ 关闭「自动管理」→ 开启「允许自启动」</p>
+                <p><span class="guide-hint">💡 不同手机路径略有差异，跳转后按提示操作</span></p>
+              </div>
             </div>
             <svg v-if="hasAutoStartPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
             <svg v-else class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
@@ -1546,11 +1797,17 @@ onUnmounted(() => {
             <div class="permission-item-info">
               <div class="permission-item-name">
                 <span>后台弹出界面</span>
-                <span class="perm-badge perm-badge-info">需手动开启</span>
+                <span v-if="hasBackgroundPopupPermission" class="perm-badge perm-badge-ok">已开启</span>
+                <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
               <p class="permission-item-desc">华为/小米等手机必须开启，否则闹钟响了只有声音没有关闭界面</p>
+              <div class="permission-item-guide">
+                <p><span class="guide-step">操作路径：</span>设置 → 权限 → 后台弹出界面 → 找到「倒计时提醒」→ 开启</p>
+                <p><span class="guide-hint">💡 开启后返回本页面，点击右侧「已开启」按钮确认</span></p>
+              </div>
             </div>
-            <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+            <svg v-if="hasBackgroundPopupPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
+            <button v-else class="perm-confirm-btn" @click.stop="confirmBackgroundPopupPermission">已开启</button>
           </div>
 
           <!-- 华为/小米等厂商：锁屏显示权限 -->
@@ -1558,11 +1815,18 @@ onUnmounted(() => {
             <div class="permission-item-info">
               <div class="permission-item-name">
                 <span>锁屏显示</span>
-                <span class="perm-badge perm-badge-info">需手动开启</span>
+                <span v-if="hasLockScreenPermission" class="perm-badge perm-badge-ok">已开启</span>
+                <span v-else class="perm-badge perm-badge-warn">未开启</span>
               </div>
               <p class="permission-item-desc">允许闹钟在锁屏状态下直接显示全屏界面，华为/小米必须开启</p>
+              <div class="permission-item-guide">
+                <p><span class="guide-step">操作路径：</span>设置 → 通知 → 锁屏通知 → 允许通知/显示全部内容</p>
+                <p><span class="guide-step">或：</span>设置 → 权限 → 找到「倒计时提醒」→ 开启「锁屏显示」</p>
+                <p><span class="guide-hint">💡 开启后返回本页面，点击右侧「已开启」按钮确认</span></p>
+              </div>
             </div>
-            <svg class="perm-arrow-icon" viewBox="0 0 24 24" fill="none"><path d="M8.59 16.59L13.17 12L8.59 7.41L10 6L16 12L10 18L8.59 16.59Z" fill="#999"/></svg>
+            <svg v-if="hasLockScreenPermission" class="perm-check-icon" viewBox="0 0 24 24" fill="none"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/></svg>
+            <button v-else class="perm-confirm-btn" @click.stop="confirmLockScreenPermission">已开启</button>
           </div>
 
           <!-- 多任务卡片加锁提示 -->
@@ -2615,6 +2879,47 @@ body {
   flex-shrink: 0;
 }
 
+/* 厂商权限手动确认按钮（无 API，用户开启后点击确认） */
+.perm-confirm-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #28C76F 0%, #20A156 100%);
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 2px 6px rgba(40, 199, 111, 0.3);
+  cursor: pointer;
+}
+
+.perm-confirm-btn:active {
+  transform: scale(0.95);
+}
+
+/* 权限操作路径引导样式 */
+.permission-item-guide {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #E0E0E0;
+}
+
+.permission-item-guide p {
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 2px 0;
+  color: #888;
+}
+
+.guide-step {
+  color: #2B7FFF;
+  font-weight: 600;
+}
+
+.guide-hint {
+  color: #FF9500;
+}
+
 .btn-permission {
   background: linear-gradient(135deg, #FF9500 0%, #FF7700 100%);
   color: white;
@@ -2640,6 +2945,263 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* 设置页面样式 */
+.settings-page {
+  background: #F8FAFC;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: white;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.settings-back-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-back-btn:active {
+  background: #F1F5F9;
+}
+
+.settings-back-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.settings-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1A1A2E;
+}
+
+.settings-header-placeholder {
+  width: 40px;
+}
+
+.settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6B7280;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+.settings-item.clickable {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-item.clickable:active {
+  background: #F8FAFC;
+}
+
+.item-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14px;
+}
+
+.item-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.app-icon {
+  background: #E8F3FF;
+}
+
+.version-icon {
+  background: #F1F5F9;
+}
+
+.ringtone-icon {
+  background: #FFF7ED;
+}
+
+.permission-icon {
+  background: #EEF2FF;
+}
+
+.widget-icon {
+  background: #ECFDF5;
+}
+
+.github-icon {
+  background: #F1F5F9;
+}
+
+.license-icon {
+  background: #F1F5F9;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: #1A1A2E;
+  margin-bottom: 2px;
+}
+
+.item-value {
+  font-size: 14px;
+  color: #6B7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-arrow {
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+}
+
+.perm-ok-text {
+  color: #28C76F;
+  font-weight: 500;
+}
+
+.perm-warn-text {
+  color: #FF9500;
+  font-weight: 500;
+}
+
+/* 更新卡片特殊样式 */
+.update-card {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+}
+
+.update-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: #FFEEF0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14px;
+}
+
+.update-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.update-info {
+  flex: 1;
+}
+
+.update-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1A1A2E;
+  margin-bottom: 2px;
+}
+
+.update-desc {
+  font-size: 13px;
+  color: #6B7280;
+}
+
+.btn-check-update-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #FF6B6B;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.btn-check-update-new:active {
+  background: #EE5A5A;
+  transform: scale(0.95);
+}
+
+.btn-check-update-new:disabled {
+  background: #9CA3AF;
+  cursor: not-allowed;
+}
+
+.btn-check-update-new svg {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-footer {
+  text-align: center;
+  padding: 20px 0 10px;
+}
+
+.settings-footer p {
+  font-size: 13px;
+  color: #9CA3AF;
 }
 
 .download-source-btn {

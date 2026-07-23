@@ -1,5 +1,5 @@
 {
-  "version": "3.9.59",
-  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.59/countdown-3.9.59.apk",
-  "releaseNotes": "修复更新检测CDN缓存问题，添加缓存破坏参数和多个更新源"
+  "version": "3.9.65",
+  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.65/app-release.apk",
+  "releaseNotes": "1. 重构设置页面：采用分组卡片式布局，参考 TaskFlow 风格\n2. 设置页面新增四大分组：应用信息、更新、功能设置、关于\n3. 更新检测改为多源并行请求，速度提升3-5倍\n4. 补全权限检查：新增悬浮窗、后台弹出界面、锁屏显示三项检查\n5. 修复震动模块：Android 14+广播注册需指定RECEIVER_NOT_EXPORTED"
 }

@@ -4,6 +4,7 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.util.Log;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Handler;
@@ -94,6 +95,11 @@ public class AlarmRingActivity extends AppCompatActivity {
         }
 
         setContentView(R.layout.alarm_ring_activity);
+
+        // 【核心】界面渲染完毕，发送广播通知 Service 开始响铃和震动
+        Intent readyIntent = new Intent("ACTION_ALARM_UI_READY");
+        sendBroadcast(readyIntent);
+        Log.d(TAG, "已发送 UI 就绪广播");
 
         timeView = findViewById(R.id.alarm_time);
         dateView = findViewById(R.id.alarm_date);

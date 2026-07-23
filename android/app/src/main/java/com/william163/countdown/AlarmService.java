@@ -5,8 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
@@ -42,12 +44,18 @@ public class AlarmService extends Service {
     private static final String SNOOZE_PREFS = "alarm_prefs";
     private static final String SNOOZE_COUNT_KEY = "snooze_count";
 
+    private static final String ACTION_ALARM_UI_READY = "ACTION_ALARM_UI_READY";
+    private static final long UI_READY_TIMEOUT = 1500; // 1.5秒保底
+
     private MediaPlayer mediaPlayer;
     private Vibrator vibrator;
     private PowerManager.WakeLock wakeLock;
     private ValueAnimator volumeAnimator;
     private Handler autoStopHandler;
     private Runnable autoStopRunnable;
+    private Handler syncHandler;
+    private BroadcastReceiver uiReadyReceiver;
+    private boolean isPlaying = false;
     private String alarmTitle = "倒计时提醒";
     private String alarmContent = "闹钟响了，点击关闭";
 
@@ -84,15 +92,41 @@ public class AlarmService extends Service {
         this.alarmTitle = title;
         this.alarmContent = content;
 
-        // 启动前台通知
+        // 启动前台通知（通过 FullScreenIntent 拉起全屏界面）
         startForeground(NOTIFICATION_ID, createNotification(title, content));
 
-        // 开始播放声音和震动
-        startAlarmSound();
-        startVibration();
+        // 预加载铃声资源，但不播放（等待UI就绪信号）
+        prepareAlarmSound();
 
-        // 音量渐进增大
-        startVolumeFadeIn();
+        // 注册广播监听器，等待 AlarmRingActivity 的 UI 就绪信号
+        syncHandler = new Handler(Looper.getMainLooper());
+        uiReadyReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d(TAG, "收到 UI 就绪信号，开始响铃和震动");
+                startPlayingAndVibrating();
+            }
+        };
+        // 【关键】Android 14+（targetSdk >= 34）注册非系统广播接收器必须指定
+        // RECEIVER_NOT_EXPORTED / RECEIVER_EXPORTED，否则抛 SecurityException，
+        // 会导致后面的兜底定时器无法执行，震动和声音都不会启动。
+        // 用 try-catch 包裹，即使注册失败也保证兜底定时器能正常调度。
+        try {
+            IntentFilter filter = new IntentFilter(ACTION_ALARM_UI_READY);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                registerReceiver(uiReadyReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(uiReadyReceiver, filter);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "注册 UI 就绪广播接收器失败", e);
+        }
+
+        // 【保险机制】1.5秒后如果还没收到 UI 信号，强制兜底响铃
+        syncHandler.postDelayed(() -> {
+            Log.d(TAG, "UI 就绪超时，强制兜底响铃");
+            startPlayingAndVibrating();
+        }, UI_READY_TIMEOUT);
 
         // 超时自动停止（2分钟后）
         startAutoStopTimer();
@@ -101,17 +135,16 @@ public class AlarmService extends Service {
     }
 
     /**
-     * 播放铃声：优先播放自定义铃声，降级为系统默认闹钟
+     * 预加载铃声资源（子弹上膛），不调用 start()
+     * 等待 UI 就绪信号后再播放
      */
-    private void startAlarmSound() {
+    private void prepareAlarmSound() {
         try {
-            // 读取用户自定义铃声路径
             SharedPreferences prefs = getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
             String customRingtonePath = prefs.getString("custom_ringtone_path", null);
 
             mediaPlayer = new MediaPlayer();
 
-            // 设置音频属性：走 STREAM_ALARM 通道，独立于静音模式
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 AudioAttributes audioAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
@@ -122,9 +155,8 @@ public class AlarmService extends Service {
                 mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
             }
 
-            boolean isCustomPlayed = false;
+            boolean isCustomPrepared = false;
 
-            // 优先尝试播放自定义铃声
             if (customRingtonePath != null && !customRingtonePath.trim().isEmpty()) {
                 File customFile = new File(customRingtonePath);
                 if (customFile.exists() && customFile.canRead()) {
@@ -132,12 +164,10 @@ public class AlarmService extends Service {
                         mediaPlayer.setDataSource(customRingtonePath);
                         mediaPlayer.setLooping(true);
                         mediaPlayer.prepare();
-                        mediaPlayer.start();
-                        isCustomPlayed = true;
-                        Log.d(TAG, "使用自定义铃声: " + customRingtonePath);
+                        isCustomPrepared = true;
+                        Log.d(TAG, "预加载自定义铃声完成: " + customRingtonePath);
                     } catch (Exception e) {
-                        Log.e(TAG, "自定义铃声播放失败，降级到系统铃声", e);
-                        // 重新创建 MediaPlayer，避免状态错误
+                        Log.e(TAG, "自定义铃声预加载失败，降级到系统铃声", e);
                         try {
                             mediaPlayer.release();
                         } catch (Exception ex) { /* ignore */ }
@@ -155,15 +185,10 @@ public class AlarmService extends Service {
                 }
             }
 
-            // 降级：播放系统默认闹钟铃声
-            if (!isCustomPlayed) {
+            if (!isCustomPrepared) {
                 Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-                if (alarmUri == null) {
-                    alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-                }
-                if (alarmUri == null) {
-                    alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-                }
+                if (alarmUri == null) alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                if (alarmUri == null) alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
 
                 if (alarmUri == null) {
                     Log.e(TAG, "无法获取系统铃声URI");
@@ -173,13 +198,53 @@ public class AlarmService extends Service {
                 mediaPlayer.setDataSource(this, alarmUri);
                 mediaPlayer.setLooping(true);
                 mediaPlayer.prepare();
-                mediaPlayer.start();
-                Log.d(TAG, "使用系统默认闹钟铃声");
+                Log.d(TAG, "预加载系统默认闹钟铃声完成");
             }
 
-            Log.d(TAG, "闹钟铃声开始播放");
+            Log.d(TAG, "铃声资源预加载完成，等待 UI 就绪信号");
         } catch (Exception e) {
-            Log.e(TAG, "播放闹钟铃声失败", e);
+            Log.e(TAG, "预加载铃声失败", e);
+        }
+    }
+
+    /**
+     * 【核心】收到 UI 就绪信号后，开始播放声音和震动
+     * 声音和震动严格同步启动，防止出现"只有震动没有声音"的错觉
+     */
+    private void startPlayingAndVibrating() {
+        if (isPlaying) return;
+        isPlaying = true;
+
+        // 注销广播监听器（已完成使命）
+        if (uiReadyReceiver != null) {
+            try {
+                unregisterReceiver(uiReadyReceiver);
+            } catch (Exception e) { /* ignore */ }
+            uiReadyReceiver = null;
+        }
+
+        // 取消兜底定时器
+        if (syncHandler != null) {
+            syncHandler.removeCallbacksAndMessages(null);
+        }
+
+        Log.d(TAG, "startPlayingAndVibrating: 开始播放声音和震动");
+
+        // 【关键】先启动震动（独立于声音，确保即使声音加载失败也能震动）
+        startVibration();
+
+        // 再启动声音
+        if (mediaPlayer != null) {
+            try {
+                mediaPlayer.setVolume(0.3f, 0.3f); // 初始音量30%，立即可听见
+                mediaPlayer.start();
+                startVolumeFadeIn();
+                Log.d(TAG, "闹钟铃声开始播放（初始音量30%）");
+            } catch (Exception e) {
+                Log.e(TAG, "启动播放失败，但震动仍在继续", e);
+            }
+        } else {
+            Log.w(TAG, "mediaPlayer 为 null，声音无法播放，但震动已启动");
         }
     }
 
@@ -196,22 +261,35 @@ public class AlarmService extends Service {
                 VibratorManager vibratorManager = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
                 if (vibratorManager != null) {
                     vibrator = vibratorManager.getDefaultVibrator();
+                    Log.d(TAG, "震动: 使用 VibratorManager 获取 Vibrator");
+                } else {
+                    Log.e(TAG, "震动: VibratorManager 为 null");
                 }
             } else {
                 vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                Log.d(TAG, "震动: 使用旧版 VibratorService");
             }
 
-            if (vibrator != null && vibrator.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    VibrationEffect effect = VibrationEffect.createWaveform(pattern, 0);
-                    vibrator.vibrate(effect);
-                } else {
-                    vibrator.vibrate(pattern, 0);
-                }
-                Log.d(TAG, "震动开始");
-            } else {
-                Log.d(TAG, "设备不支持震动");
+            if (vibrator == null) {
+                Log.e(TAG, "震动: vibrator 为 null，无法震动");
+                return;
             }
+
+            if (!vibrator.hasVibrator()) {
+                Log.w(TAG, "震动: 设备不支持震动");
+                return;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                VibrationEffect effect = VibrationEffect.createWaveform(pattern, 0);
+                vibrator.vibrate(effect);
+                Log.d(TAG, "震动: VibrationEffect.createWaveform 已启动");
+            } else {
+                vibrator.vibrate(pattern, 0);
+                Log.d(TAG, "震动: 旧版 vibrate(pattern) 已启动");
+            }
+        } catch (SecurityException se) {
+            Log.e(TAG, "震动: 权限被拒绝", se);
         } catch (Exception e) {
             Log.e(TAG, "震动失败", e);
         }
@@ -287,13 +365,14 @@ public class AlarmService extends Service {
 
     /**
      * 音量渐进增大（Fade-in）
-     * 在10秒内将音量从0%逐渐过渡到100%，避免突然大声吓到用户
+     * 在10秒内将音量从30%逐渐过渡到100%，避免突然大声吓到用户
+     * 初始音量设为30%确保与震动同时出现时即可被听见
      */
     private void startVolumeFadeIn() {
         if (mediaPlayer != null) {
             try {
-                mediaPlayer.setVolume(0f, 0f);
-                volumeAnimator = ValueAnimator.ofFloat(0f, 1f);
+                // 从30%开始渐增到100%，确保一开始就能听到声音
+                volumeAnimator = ValueAnimator.ofFloat(0.3f, 1f);
                 volumeAnimator.setDuration(10000); // 10秒渐变
                 volumeAnimator.addUpdateListener(animation -> {
                     float volume = (float) animation.getAnimatedValue();
@@ -306,7 +385,7 @@ public class AlarmService extends Service {
                     }
                 });
                 volumeAnimator.start();
-                Log.d(TAG, "音量渐进增大已启动");
+                Log.d(TAG, "音量渐进增大已启动（30% -> 100%）");
             } catch (Exception e) {
                 Log.e(TAG, "启动音量渐进失败", e);
             }
@@ -475,6 +554,20 @@ public class AlarmService extends Service {
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "闹钟服务停止，释放资源");
+
+        // 注销广播监听器
+        if (uiReadyReceiver != null) {
+            try {
+                unregisterReceiver(uiReadyReceiver);
+            } catch (Exception e) { /* ignore */ }
+            uiReadyReceiver = null;
+        }
+
+        // 取消同步 Handler
+        if (syncHandler != null) {
+            syncHandler.removeCallbacksAndMessages(null);
+            syncHandler = null;
+        }
 
         // 取消音量渐进动画
         if (volumeAnimator != null) {

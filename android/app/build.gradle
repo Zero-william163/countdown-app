@@ -5,18 +5,18 @@ android {
     namespace = "com.william163.countdown"
     compileSdk = rootProject.ext.compileSdkVersion
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '21'
+        jvmTarget = '17'
     }
     defaultConfig {
         applicationId "com.william163.countdown"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 97
-        versionName "3.9.59"
+        versionCode 103
+        versionName "3.9.65"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'

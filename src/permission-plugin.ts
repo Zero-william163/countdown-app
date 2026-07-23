@@ -6,10 +6,16 @@ export interface PermissionCheckerPlugin {
   checkNotificationPermission(): Promise<{ granted: boolean }>;
   checkAutoStartPermission(): Promise<{ granted: boolean }>;
   checkFullScreenIntentPermission(): Promise<{ granted: boolean }>;
+  checkOverlayPermission(): Promise<{ granted: boolean }>;
+  checkBackgroundPopupPermission(): Promise<{ granted: boolean }>;
+  confirmBackgroundPopupPermission(): Promise<{ granted: boolean; success: boolean }>;
+  checkLockScreenPermission(): Promise<{ granted: boolean }>;
+  confirmLockScreenPermission(): Promise<{ granted: boolean; success: boolean }>;
   openAlarmSettings(): Promise<void>;
   openBatterySettings(): Promise<void>;
   openAutoStartSettings(): Promise<void>;
   requestFullScreenIntentPermission(): Promise<void>;
+  openOverlaySettings(): Promise<void>;
   openBackgroundPopupSettings(): Promise<void>;
   openAppSettings(): Promise<void>;
   openUrl(options: { url: string }): Promise<void>;
@@ -23,10 +29,16 @@ export const PermissionChecker = registerPlugin<PermissionCheckerPlugin>('Permis
     checkNotificationPermission: () => Promise.resolve({ granted: true }),
     checkAutoStartPermission: () => Promise.resolve({ granted: true }),
     checkFullScreenIntentPermission: () => Promise.resolve({ granted: true }),
+    checkOverlayPermission: () => Promise.resolve({ granted: true }),
+    checkBackgroundPopupPermission: () => Promise.resolve({ granted: true }),
+    confirmBackgroundPopupPermission: () => Promise.resolve({ granted: true, success: true }),
+    checkLockScreenPermission: () => Promise.resolve({ granted: true }),
+    confirmLockScreenPermission: () => Promise.resolve({ granted: true, success: true }),
     openAlarmSettings: () => Promise.resolve(),
     openBatterySettings: () => Promise.resolve(),
     openAutoStartSettings: () => Promise.resolve(),
     requestFullScreenIntentPermission: () => Promise.resolve(),
+    openOverlaySettings: () => Promise.resolve(),
     openBackgroundPopupSettings: () => Promise.resolve(),
     openAppSettings: () => Promise.resolve(),
     openUrl: ({ url }: { url: string }) => { window.open(url, '_blank'); return Promise.resolve(); },
