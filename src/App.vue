@@ -59,6 +59,7 @@ const countdown = ref({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 const totalRemaining = ref('');
 
 let timer: number | null = null;
+let timeOffset = 0; // 网络时间与本地时间的偏移量（毫秒）
 
 // 目标日期文本
 const targetDateTimeText = computed(() => {
@@ -519,9 +520,9 @@ async function getBeijingTime(): Promise<Date> {
     const datetime = response.data.datetime;
     const networkTime = new Date(datetime).getTime();
     const localTime = Date.now();
-    const offset = networkTime - localTime;
-    await Preferences.set({ key: 'time_offset', value: offset.toString() });
-    console.log('[Time] 网络时间:', new Date(networkTime), '本地时间:', new Date(localTime), '偏移量:', offset);
+    timeOffset = networkTime - localTime;
+    await Preferences.set({ key: 'time_offset', value: timeOffset.toString() });
+    console.log('[Time] 网络时间:', new Date(networkTime), '本地时间:', new Date(localTime), '偏移量:', timeOffset);
     return new Date(datetime);
   } catch (error) {
     console.warn('获取网络时间失败，使用本地时间降级方案:', error);
@@ -529,7 +530,6 @@ async function getBeijingTime(): Promise<Date> {
   }
 }
 
-// 降级方案：将本地时间强制转换为北京时间
 function getBeijingTimeFallback(): Date {
   const now = new Date();
   const beijingOffset = 8 * 60;
@@ -537,12 +537,16 @@ function getBeijingTimeFallback(): Date {
   return new Date(now.getTime() + (localOffset + beijingOffset) * 60000);
 }
 
+function getCurrentTime(): Date {
+  return new Date(Date.now() + timeOffset);
+}
+
 // 更新倒计时
 async function updateCountdown() {
   if (!isAlarmSet.value || !targetDate.value) return;
 
   try {
-    const now = await getBeijingTime();
+    const now = getCurrentTime();
     console.log('[Countdown] 当前时间:', now);
     console.log('[Countdown] 目标日期:', targetDate.value);
 
@@ -1248,7 +1252,18 @@ onMounted(async () => {
     console.error('加载设置失败:', e);
   }
 
-  // 3. 检查权限状态（用于界面显示）
+  // 3. 加载时间偏移量并获取当前网络时间（仅一次）
+  try {
+    const offsetResult = await Preferences.get({ key: 'time_offset' });
+    if (offsetResult.value) {
+      timeOffset = parseInt(offsetResult.value);
+    }
+    await getBeijingTime();
+  } catch (e) {
+    console.error('初始化时间偏移量失败:', e);
+  }
+
+  // 4. 检查权限状态（用于界面显示）
   try {
     await checkAllPermissions();
   } catch (e) {
@@ -1395,28 +1410,28 @@ onUnmounted(() => {
               <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
             </svg>
             <span>所有权限已开启</span>
-            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions(true)">检查权限</button>
           </div>
           <div v-else-if="permissionCheckResult && !permissionCheckResult.allOk" class="permission-status warning">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
             </svg>
             <span>{{ permissionCheckResult.missing.length }} 项权限未开启</span>
-            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions(true)">检查权限</button>
           </div>
           <div v-else-if="hasPermission && hasExactAlarmPermission && hasBatteryOptimization" class="permission-status active">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="#28C76F"/>
             </svg>
             <span>所有权限已开启</span>
-            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions(true)">检查权限</button>
           </div>
           <div v-else class="permission-status warning">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M1 21H23L12 2L1 21ZM13 18H11V16H13V18ZM13 14H11V10H13V14Z" fill="#FF9500"/>
             </svg>
             <span>权限不完整，点击检查</span>
-            <button class="check-permission-btn" @click="() => checkAllPermissions()">检查权限</button>
+            <button class="check-permission-btn" @click="() => checkAllPermissions(true)">检查权限</button>
           </div>
 
           <!-- 未开启权限列表 -->

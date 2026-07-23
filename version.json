@@ -1,5 +1,5 @@
 {
-  "version": "3.9.67",
-  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.67/app-release.apk",
-  "releaseNotes": "1. 修复权限引导\"已完成\"按钮死循环闪烁问题\n2. 多任务卡片加锁改为纯文字教程（无系统API支持跳转）\n3. 权限引导分层为核心权限+高级优化（折叠显示）\n4. 首次启动不再弹出全量权限引导\n5. 渐进式权限索取：仅在设置页主动检查时弹出引导"
+  "version": "3.9.68",
+  "apkUrl": "https://github.com/Zero-william163/countdown-app/releases/download/v3.9.68/app-release.apk",
+  "releaseNotes": "1. 修复倒计时不动问题：优化时间获取逻辑，启动时获取一次网络时间，后续使用本地时间+偏移量\n2. 修复权限引导入口：主页面点击\"检查权限\"按钮现在可以弹出权限引导弹窗\n3. 修复权限引导教程：现在可以在权限引导弹窗中看到完整的权限设置教程"
 }
